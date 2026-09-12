@@ -8,6 +8,7 @@
  *  Revisoes  :
  *      Data        Versao  Autor             Descricao
  *      07/09/2024  1.0     Edson Midorikawa  versao em Verilog
+ *      12/09/2026  1.1     Guilherme Muller  arquivo completado
  * --------------------------------------------------------------------------
  */
  
@@ -45,6 +46,7 @@ module interface_hcsr04_uc (
     end
 
     // Lógica de próximo estado
+    /* completado por guilherme para as outras saidas */
     always @(*) begin
         case (Eatual)
             inicial: Eprox = medir ? preparacao : inicial;
@@ -59,9 +61,13 @@ module interface_hcsr04_uc (
     end
 
     // Saídas de controle
+    // completado por guilherme
     always @(*) begin
         case (Eatual)
             preparacao: zera = 1'b1;
+            envia_trigger: gera = 1'b1;
+            armazenamento: registra = 1'b1;
+            final: pronto = 1'b1;
             default:    zera = 1'b0;
         endcase
 
