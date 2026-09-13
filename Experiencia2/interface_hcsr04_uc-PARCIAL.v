@@ -71,8 +71,6 @@ module interface_hcsr04_uc (
             default:    zera = 1'b0;
         endcase
 
-        /* completar para outras saidas */
-
         case (Eatual)
             inicial:       db_estado = 4'b0000;
             preparacao:    db_estado = 4'b0001;

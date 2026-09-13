@@ -28,13 +28,13 @@ module interface_hcsr04_fd (
 
     // (U1) pulso de 10us (??? clocks)
     gerador_pulso #(
-        .largura(/* completar */) 
+        .largura(500) 
     ) U1 (
         .clock (clock  ),
-        .reset (/* completar */),
-        .gera  (/* completar */),
-        .para  (/* completar */), 
-        .pulso (/* completar */),
+        .reset (zera   ),
+        .gera  (gera   ),
+        .para  (/* completar *), 
+        .pulso (trigger),
         .pronto(/* completar */)
     );
 

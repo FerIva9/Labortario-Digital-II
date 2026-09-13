@@ -10,6 +10,7 @@
  *  Revisoes  :
  *      Data        Versao  Autor             Descricao
  *      07/09/2024  1.0     Edson Midorikawa  versao em Verilog
+ *      13/09/2026  1.1     Guilherme Muller  versão preenchida
  * --------------------------------------------------------------------------
  */
 
@@ -45,16 +46,27 @@ module contador_cm_uc (
     end
 
     // Lógica de próximo estado
+    // completada por guilherme
+
     always @(*) begin
         case (Eatual)
-            /* completar */
+            inicial     : Eprox = pulso ? preparacao : inicial;
+            preparacao  : Eprox = espera;
+            espera      : Eprox = tick ? conta : ( pulso ? espera : final );
+            conta       : Eprox = espera;
+            final       : Eprox = inicial;
+            default     : Eprox = inicial; 
         endcase
     end
 
     // Lógica de saída (Moore)
+    //completada por guilherme
     always @(*) begin
-	
-        /* completar */
+        zera_bcd = (Eatual == preparacao) ? 1'b1 : 1'b0;
+        zera_tick = (Eatual == preparacao) ? 1'b1 : 1'b0;
+        conta_bcd = (Eatual == conta) ? 1'b1 : 1'b0;
+        conta_tick = (Eatual == conta) ? 1'b1 : 1'b0;
+        pronto = (Eatual == final) ? 1'b1 : 1'b0;
 		
     end
 
