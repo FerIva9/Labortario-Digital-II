@@ -67,7 +67,7 @@ module interface_hcsr04_uc (
             preparacao: zera = 1'b1;
             envia_trigger: gera = 1'b1;
             armazenamento: registra = 1'b1;
-            final: pronto = 1'b1;
+            final_medida: pronto = 1'b1;
             default:    zera = 1'b0;
         endcase
 
