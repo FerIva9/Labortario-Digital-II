@@ -33,7 +33,7 @@ module interface_hcsr04_fd (
         .clock (clock  ),
         .reset (zera   ),
         .gera  (gera   ),
-        .para  (/* completar *), 
+        .para  (1'b0   ), 
         .pulso (trigger),
         .pronto(/* completar */)
     );
@@ -44,13 +44,13 @@ module interface_hcsr04_fd (
         .N(12)
     ) U2 (
         .clock  (clock         ),
-        .reset  (/* completar */),
-        .pulso  (/* completar */),
+        .reset  (zera          ),
+        .pulso  (pulso         ),
         .digito2(s_medida[11:8]),
         .digito1(s_medida[7:4] ),
         .digito0(s_medida[3:0] ),
-        .fim    (/* completar */),
-        .pronto (/* completar */)
+        .fim    (fim           ),
+        .pronto (fim_medida    )
     );
 
     // (U3) registrador
@@ -58,10 +58,10 @@ module interface_hcsr04_fd (
         .N(12)
     ) U3 (
         .clock  (clock    ),
-        .clear  (/* completar */),
-        .enable (/* completar */),
+        .clear  (zera     ),
+        .enable (registra ),
         .D      (s_medida ),
-        .Q      (/* completar */)
+        .Q      (distancia)
     );
 
 endmodule
