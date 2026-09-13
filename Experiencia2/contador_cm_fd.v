@@ -26,8 +26,12 @@ module contador_cm_fd #(
     output wire [3:0] digito0,
     output wire [3:0] digito1,
     output wire [3:0] digito2,
-    output wire       fim
+    output wire       fim,
+    output wire       meio
 );
+
+    // Sinais internos
+    wire [N-1:0] s_resto;
 
     // Gera tick do contador de cm a cada ciclo de R
     contador_m #(
@@ -38,10 +42,24 @@ module contador_cm_fd #(
         .zera_as (1'b0      ),
         .zera_s  (zera_tick ),
         .conta   (conta_tick),
-        .Q       (          ),  // s_resto (desconectado)
+        .Q       (s_resto   ),  // s_resto (desconectado)
         .fim     (tick      ),
         .meio    (          )
     );
+
+     /*
+     * Verifica se o resto da contagem atingiu pelo menos metade
+     * de um centimetro.
+     *
+     * Para R = 2941:
+     *
+     *       R = 2941 clocks/cm
+     *       metade = 1470,5 clocks
+     *
+     * Como a contagem eh inteira, o arredondamento para cima
+     * ocorre a partir de 1471 clocks.
+     */
+    assign meio = (s_resto >= ((R + 1) / 2));
 
     // Contador de distância em cm
     contador_bcd_3digitos U2 (

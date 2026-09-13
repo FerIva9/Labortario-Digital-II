@@ -60,7 +60,7 @@ module interface_hcsr04_fd (
     // Arredondamento sem alterar contador_cm.v:
     // conta o tempo do pulso echo em clocks e arredonda pela regra
     // distancia = (tempo + 1470)/2941, equivalente a (tempo_us + 29)/59.
-    always @(posedge clock or posedge zera) begin
+    /*always @(posedge clock or posedge zera) begin
         if (zera) begin
             contador_echo <= 32'd0;
             pulso_ant     <= 1'b0;
@@ -72,7 +72,7 @@ module interface_hcsr04_fd (
 
             pulso_ant <= pulso;
         end
-    end
+    end*/
 
     // (U3) registrador
     registrador_n #(
@@ -81,7 +81,7 @@ module interface_hcsr04_fd (
         .clock  (clock            ),
         .clear  (zera             ),
         .enable (registra         ),
-        .D      (distancia_ajustada),
+        .D      (s_medida         ),
         .Q      (distancia        )
     );
 

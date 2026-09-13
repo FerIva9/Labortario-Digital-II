@@ -27,6 +27,7 @@ module contador_cm #(
 );
 
     // Sinais internos
+    wire s_meio;
     wire s_zera_tick;
     wire s_conta_tick;
     wire s_zera_bcd;
@@ -48,7 +49,8 @@ module contador_cm #(
         .digito0   (digito0     ),
         .digito1   (digito1     ),
         .digito2   (digito2     ),
-        .fim       (fim         )
+        .fim       (fim         ),
+        .meio      (s_meio      )
     );
 
     // Instanciação do contador_cm_uc
@@ -61,6 +63,7 @@ module contador_cm #(
         .conta_tick(s_conta_tick),
         .zera_bcd  (s_zera_bcd  ),
         .conta_bcd (s_conta_bcd ),
+        .meio      (s_meio      ),
         .pronto    (pronto      )
     );
 
