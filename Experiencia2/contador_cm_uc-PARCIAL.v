@@ -45,8 +45,8 @@ module contador_cm_uc (
         case (Eatual)
             inicial:      Eprox = pulso ? preparacao : inicial;
             preparacao:   Eprox = espera;
-            espera:       Eprox = tick ? conta : (pulso ? espera : final_estado);
-            conta:        Eprox = espera;
+            espera:       Eprox = (pulso && tick) ? conta : (pulso ? espera : final_estado);
+            conta:        Eprox = (pulso && tick) ? conta : (pulso ? espera : final_estado);
             final_estado: Eprox = inicial;
             default:      Eprox = inicial;
         endcase
@@ -56,7 +56,7 @@ module contador_cm_uc (
         zera_bcd = (Eatual == preparacao) ? 1'b1 : 1'b0;
         zera_tick = (Eatual == preparacao) ? 1'b1 : 1'b0;
         conta_bcd = (Eatual == conta) ? 1'b1 : 1'b0;
-        conta_tick = (Eatual == conta) ? 1'b1 : 1'b0;
+        conta_tick = ((Eatual == espera) || (Eatual == conta)) && pulso;
         pronto = (Eatual == final_estado) ? 1'b1 : 1'b0;
     end
 
