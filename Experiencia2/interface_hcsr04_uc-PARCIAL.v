@@ -46,29 +46,38 @@ module interface_hcsr04_uc (
     end
 
     // Lógica de próximo estado
-    /* completado por guilherme para as outras saidas */
     always @(*) begin
         case (Eatual)
-            inicial: Eprox = medir ? preparacao : inicial;
-            preparacao: Eprox = envia_trigger;
+            inicial:       Eprox = medir ? preparacao : inicial;
+            preparacao:    Eprox = envia_trigger;
             envia_trigger: Eprox = espera_echo;
-            espera_echo: Eprox = echo ? medida : espera_echo;
-            medida: Eprox = fim_medida ? armazenamento : medida;
-            armazenamento: Eprox = registra;
-            final_medida: Eprox = inicial;
-            default: Eprox = inicial;
+            espera_echo:   Eprox = echo ? medida : espera_echo;
+            medida:        Eprox = fim_medida ? armazenamento : medida;
+            armazenamento: Eprox = final_medida;
+            final_medida:  Eprox = inicial;
+            default:      Eprox = inicial;
         endcase
     end
 
     // Saídas de controle
-    // completado por guilherme
     always @(*) begin
+        // zera todas as saídas para evitar manter sinais antigos
+        zera = 1'b0;
+        gera = 1'b0;
+        registra = 1'b0;
+        pronto = 1'b0;
+
         case (Eatual)
-            preparacao: zera = 1'b1;
-            envia_trigger: gera = 1'b1;
-            armazenamento: registra = 1'b1;
-            final_medida: pronto = 1'b1;
-            default:    zera = 1'b0;
+            preparacao:    zera = 1'b1;
+            envia_trigger:  gera = 1'b1;
+            armazenamento:  registra = 1'b1;
+            final_medida:   pronto = 1'b1;
+            default: begin
+                zera = 1'b0;
+                gera = 1'b0;
+                registra = 1'b0;
+                pronto = 1'b0;
+            end
         endcase
 
         case (Eatual)

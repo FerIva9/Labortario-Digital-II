@@ -26,7 +26,8 @@ module interface_hcsr04_fd (
     // Sinais internos
     wire [11:0] s_medida;
 
-    // (U1) pulso de 10us (??? clocks)
+    // (U1) pulso de 10us (500 clocks em 50 MHz)
+    wire s_trigger_pronto;
     gerador_pulso #(
         .largura(500) 
     ) U1 (
@@ -35,7 +36,7 @@ module interface_hcsr04_fd (
         .gera  (gera   ),
         .para  (1'b0   ), 
         .pulso (trigger),
-        .pronto(/* completar */)
+        .pronto(s_trigger_pronto)
     );
 
     // (U2) medida em cm (R=2941 clocks)
