@@ -25,6 +25,9 @@ module interface_hcsr04_fd (
 
     // Sinais internos
     wire [11:0] s_medida;
+    reg  [31:0] contador_echo;
+    reg  [11:0] distancia_ajustada;
+    reg         pulso_ant;
 
     // (U1) pulso de 10us (500 clocks em 50 MHz)
     wire s_trigger_pronto;
@@ -54,15 +57,32 @@ module interface_hcsr04_fd (
         .pronto (fim_medida    )
     );
 
+    // Arredondamento sem alterar contador_cm.v:
+    // conta o tempo do pulso echo em clocks e arredonda pela regra
+    // distancia = (tempo + 1470)/2941, equivalente a (tempo_us + 29)/59.
+    always @(posedge clock or posedge zera) begin
+        if (zera) begin
+            contador_echo <= 32'd0;
+            pulso_ant     <= 1'b0;
+        end else begin
+            if (pulso)
+                contador_echo <= contador_echo + 32'd1;
+            else if (pulso_ant)
+                distancia_ajustada <= (contador_echo + 32'd1470) / 32'd2941;
+
+            pulso_ant <= pulso;
+        end
+    end
+
     // (U3) registrador
     registrador_n #(
         .N(12)
     ) U3 (
-        .clock  (clock    ),
-        .clear  (zera     ),
-        .enable (registra ),
-        .D      (s_medida ),
-        .Q      (distancia)
+        .clock  (clock            ),
+        .clear  (zera             ),
+        .enable (registra         ),
+        .D      (distancia_ajustada),
+        .Q      (distancia        )
     );
 
 endmodule
