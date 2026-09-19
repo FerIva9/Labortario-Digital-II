@@ -1,0 +1,15 @@
+Estrutura geral do testbench do circuito da Trena Digital com Saida Serial
+
+1.  definicao de sinais internos
+2.  instanciacao do DUT
+3.  definicao dos casos de teste
+4.  loop dos casos de teste
+4.1     atribui sinal com valor do caso de teste (largura de pulso echo)
+4.2     envia pulso mensurar
+4.3     espera 400us (tempo entre pulsos trigger e echo)
+4.4     gera pulso echo com largura definida
+4.5     espera pelo final da transmissao serial da medida
+4.6     espera 100us entre casos de teste
+5.   fim da simulacao
+
+DICA: usar comandos dos testbenches das experiências 2 e 3.
