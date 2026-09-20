@@ -1,5 +1,5 @@
 /* -------------------------------------------------------------
- * Arquivo   : tx_serial_7E1_fd.v
+ * Arquivo   : trena_digital_fd.v
  *--------------------------------------------------------------
  * Descricao : fluxo de dados do circuito base da trena digital 
  * 
@@ -22,6 +22,8 @@
     input wire medir,
     input wire [1:0] sel_ascii,
     input wire partida,
+    input wire reset_fd,
+
 
     // Saídas para a UC
     output wire pulso_mensurar,
@@ -46,6 +48,7 @@
     wire [6:0] s_ascii_unidade;
     wire [6:0] s_ascii_hash;
     wire [6:0] s_dados_ascii;
+    wire s_reset_fd;
 
     // Tratamento do sinal mensurar.
 
@@ -53,7 +56,7 @@
 
     edge_detector ED_MENSURAR (
         .clock (clock),
-        .reset (reset),
+        .reset (s_reset_fd),
         .sinal (s_mensurar),
         .pulso (pulso_mensurar)
     );
@@ -61,7 +64,7 @@
 
     interface_hcsr04 SENSOR (
         .clock     (clock),
-        .reset     (reset),
+        .reset     (s_reset_fd),
         .medir     (medir),
         .echo      (echo),
         .trigger   (trigger),
@@ -83,7 +86,7 @@
 
     tx_serial_7E1 TX (
         .clock          (clock),
-        .reset          (reset),
+        .reset          (s_reset_fd),
         .partida        (partida),
         .dados_ascii    (s_dados_ascii),
         .saida_serial   (saida_serial),
@@ -101,6 +104,7 @@
     assign s_ascii_unidade = {3'b011, s_medida[3:0]};
     assign s_ascii_hash = 7'h23;
     assign medida = s_medida;
+    assign s_reset_fd = reset | reset_fd;
 
 
  endmodule
