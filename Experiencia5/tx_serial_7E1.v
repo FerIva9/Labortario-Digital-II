@@ -15,6 +15,7 @@
  *     Data        Versao  Autor             Descricao
  *     05/09/2026  1.0     Fernando Ivanov   criacao
  *     19/09/2026  1.1     Fernando Ivanov   adaptação p/ exp 4
+ *     25/09/2026  1.2     Fernando Ivanov   adaptação p/ exp 5
  *--------------------------------------------------------------
  */
 
@@ -26,8 +27,6 @@ module tx_serial_7E1 (
 
     output wire       saida_serial,
     output wire       pronto,
-    output wire       db_clock,
-    output wire       db_tick,
     output wire       db_partida,
     output wire       db_saida_serial,
     output wire [3:0] db_estado
@@ -98,8 +97,7 @@ module tx_serial_7E1 (
     /*
      * Depuração
      */
-    assign db_clock        = clock;
-    assign db_tick         = s_tick;
+
     assign db_partida      = partida;
     assign db_saida_serial = s_saida_serial;
 
