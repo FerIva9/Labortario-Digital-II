@@ -7,6 +7,7 @@
  *  Revisoes  :
  *      Data        Versao  Autor             Descricao
  *      07/09/2024  1.0     Edson Midorikawa  versao em Verilog
+ *      25/09/2024  1.1     Fernando Ivanov   adição de saídas de depuração
  * --------------------------------------------------------------------------
  */
  
@@ -18,6 +19,8 @@ module interface_hcsr04 (
     output wire        trigger,
     output wire [11:0] medida,
     output wire        pronto,
+    output wire        db_reset,
+    output wire        db_medir,
     output wire [3:0]  db_estado
 );
 
@@ -57,5 +60,7 @@ module interface_hcsr04 (
 
     // Saída
     assign medida = s_medida; 
+    assign db_reset = reset;
+    assign db_medir = medir;
 
 endmodule
