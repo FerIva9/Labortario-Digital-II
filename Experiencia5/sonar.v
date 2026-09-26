@@ -1,11 +1,3 @@
-/*
- * sonar.v - integracao da unidade de controle e do fluxo de dados.
- * Entradas reset e ligar ativas em 1, conectadas diretamente a UC.
- * Displays de sete segmentos ativos em zero (hexa7seg):
- *   medida2 medida1 medida0: distancia em cm, em tres digitos BCD;
- *   db_posicao: indice da posicao atual, de 0 a 7;
- *   db_estado1 db_estado0: estado da UC em hexadecimal, de 00 a 16.
- */
 module sonar (
     input wire clock,
     input wire reset,
@@ -22,7 +14,7 @@ module sonar (
     output wire [6:0] medida2,
     output wire [6:0] db_posicao,
     output wire [6:0] db_estado0,
-    output wire [6:0] db_estado1,
+    output wire db_estado1, // LED: bit mais significativo do estado da UC.
 
     // Pulsos para observacao no analisador logico/osciloscopio.
     output wire db_medir,
@@ -94,7 +86,8 @@ module sonar (
     hexa7seg DISPLAY2 (.hexa(s_medida[11:8]), .display(medida2));
     hexa7seg DISPLAY3 (.hexa({1'b0, s_db_posicao}), .display(db_posicao));
     hexa7seg DISPLAY4 (.hexa(s_db_estado_uc[3:0]), .display(db_estado0));
-    hexa7seg DISPLAY5 (.hexa({3'b000, s_db_estado_uc[4]}), .display(db_estado1));
+    // LED apagado: estados 00 a 0F; aceso: estados 10 a 16 (hex).
+    assign db_estado1 = s_db_estado_uc[4];
 
     assign db_medir         = s_medir;
     assign db_pronto_serial = s_pronto_serial;
