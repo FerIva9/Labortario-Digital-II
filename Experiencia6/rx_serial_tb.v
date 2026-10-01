@@ -19,20 +19,20 @@
 module rx_serial_tb;
 
   // Declaração de sinais para conectar o componente a ser testado (DUT)
-  logic       clock_in         = 1'b0;
-  logic       reset_in         = 1'b0;
-  logic       pronto_out       = 1'b0;
-  logic [6:0] dados_ascii_out  = 1'b0;
-  logic       paridade_out     = 1'b0;
-  logic       paridade_par_out = 1'b0;
+  reg         clock_in;
+  reg         reset_in;
+  wire        pronto_out;
+  wire [6:0]  dados_ascii_out;
+  wire        paridade_out;
+  wire        paridade_par_out;
 
   // Sinais usados com UART_WRITE_BYTE
-  logic       Sinal_Serial;
-  logic [7:0] serialData;
+  reg         Sinal_Serial;
+  reg [7:0]   serialData;
 
   // Configurações do clock
-  localparam clockPeriod = 20ns; // clock 50MHz
-  localparam bitPeriod   = 434*clockPeriod; // 115.200 bauds
+  parameter clockPeriod = 20; // clock 50MHz
+  parameter bitPeriod   = 434*clockPeriod; // 115.200 bauds
 
   // Gerador de clock
   always #(clockPeriod/2) clock_in = ~clock_in;
@@ -43,9 +43,9 @@ module rx_serial_tb;
   // - adaptacao de codigo acessado de:
   //   https://nandland.com/uart-serial-port-module/
   // - pode ser usado para testar diversas configurações (7O1, 8E1,7N2, etc)
-  task UART_WRITE_BYTE (
-    input  logic [7:0] Data_In
-  );
+  task UART_WRITE_BYTE;
+    input [7:0] Data_In;
+    integer ii;
     begin
 
       // envia Start Bit
@@ -53,7 +53,7 @@ module rx_serial_tb;
       #bitPeriod;
 
       // envia 8 bits seriais
-      for (integer ii=0; ii<8; ii++) begin
+      for (ii=0; ii<8; ii=ii+1) begin
         Sinal_Serial = Data_In[ii];
         #bitPeriod;
       end
@@ -65,24 +65,8 @@ module rx_serial_tb;
     end
   endtask
 
-  // Casos de teste
-  typedef struct {
-    integer     id;
-    logic [7:0] dado;
-  } caso_teste_type;
-
-  // Array dos casos de teste
-  localparam caso_teste_type casos_teste [] = '{
-    '{1, 8'b00110101}, // 35H (dado=35H + paridade=0) OK para 7E1
-    '{2, 8'b11010101}, // D5H (dado=55H + paridade=1) Erro para 7E1
-    '{3, 8'b11111101}, // FDH (dado=7DH + paridade=1) Erro para 7E1
-    '{4, 8'b10110101}, // B5H (dado=35H + paridade=1) Erro para 7E1
-    '{5, 8'b01000001}, // 41H (dado=41H + paridade=0) OK para 7E1
-    '{6, 8'b11000001}, // C1H (dado=41H + paridade=1) Erro para 7E1
-    '{7, 8'b00000000}, // 00H (dado=00H + paridade=0) OK para 7E1
-    '{8, 8'b10000000}  // 80H (dado=00H + paridade=1) Erro para 7E1
-    // inserir aqui outros casos de teste (inserir "," na linha anterior)
-  };
+  // Casos de teste: bit [7] e a paridade, bits [6:0] sao o dado ASCII.
+  reg [7:0] casos_teste [0:7];
 
   integer caso;
 
@@ -106,8 +90,18 @@ module rx_serial_tb;
     // inicio da simulacao
     $display("Inicio da simulacao");
 
-    // Valores iniciais
+    // Valores iniciais e casos de teste
+    clock_in = 1'b0;
+    reset_in = 1'b0;
     Sinal_Serial = 1'b1;
+    casos_teste[0] = 8'b00110101; // 35H, paridade correta
+    casos_teste[1] = 8'b11010101; // 55H, paridade incorreta
+    casos_teste[2] = 8'b11111101; // 7DH, paridade incorreta
+    casos_teste[3] = 8'b10110101; // 35H, paridade incorreta
+    casos_teste[4] = 8'b01000001; // 41H, paridade correta
+    casos_teste[5] = 8'b11000001; // 41H, paridade incorreta
+    casos_teste[6] = 8'b00000000; // 00H, paridade correta
+    casos_teste[7] = 8'b10000000; // 00H, paridade incorreta
 
     // reset com 5 periodos de clock
     reset_in = 1'b1;
@@ -116,10 +110,9 @@ module rx_serial_tb;
     #bitPeriod;
 
     // loop pelos casos de teste
-    foreach (casos_teste[i]) begin
-      caso = casos_teste[i].id;
-      $display("Caso de teste %0d", casos_teste[i].id);
-      serialData = casos_teste[i].dado;
+    for (caso=0; caso<8; caso=caso+1) begin
+      $display("Caso de teste %0d", caso+1);
+      serialData = casos_teste[caso];
 
       // 1) aguarda 2 periodos de bit antes de enviar bits
       # (2*bitPeriod);
@@ -135,10 +128,6 @@ module rx_serial_tb;
 
     // final dos casos de teste da simulacao
     caso = 99;
-    // Reset do circuito
-    reset_in = 1'b0;
-    reset_in = # (5*clockPeriod) 1'b1;
-    #bitPeriod;
 
     // fim da simulação
     $display("Fim da simulacao");
