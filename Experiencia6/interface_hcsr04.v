@@ -29,6 +29,9 @@ module interface_hcsr04 (
     wire        s_gera;
     wire        s_registra;
     wire        s_fim_medida;
+    wire        s_zera_timeout;
+    wire        s_conta_timeout;
+    wire        s_timeout;
     wire [11:0] s_medida;
 
     // Unidade de controle
@@ -38,6 +41,9 @@ module interface_hcsr04 (
         .medir     (medir       ),
         .echo      (echo        ),
         .fim_medida(s_fim_medida),
+        .zera_timeout (s_zera_timeout ),
+        .conta_timeout(s_conta_timeout),
+        .timeout      (s_timeout      ),
         .zera      (s_zera      ),
         .gera      (s_gera      ),
         .registra  (s_registra  ),
@@ -53,6 +59,9 @@ module interface_hcsr04 (
         .gera      (s_gera      ),
         .registra  (s_registra  ),
         .fim_medida(s_fim_medida),
+        .zera_timeout (s_zera_timeout ),
+        .conta_timeout(s_conta_timeout),
+        .timeout      (s_timeout      ),
         .trigger   (trigger     ),
         .fim       (            ),  // (desconectado)
         .distancia (s_medida    )

@@ -17,6 +17,9 @@ module interface_hcsr04_fd (
     input wire         zera,
     input wire         gera,
     input wire         registra,
+    input wire         zera_timeout,
+    input wire         conta_timeout,
+    output wire        timeout,
     output wire        fim_medida,
     output wire        trigger,
     output wire        fim,
@@ -73,6 +76,21 @@ module interface_hcsr04_fd (
             pulso_ant <= pulso;
         end
     end*/
+
+    // Timeout de 1 s em 50 MHz: 50.000.000 ciclos, 26 bits.
+    // A UC conta somente em espera_echo e zera entre tentativas.
+    contador_m #(
+        .M(50_000_000),
+        .N(26)
+    ) U_timeout (
+        .clock  (clock        ),
+        .zera_as(1'b0         ),
+        .zera_s (zera_timeout ),
+        .conta  (conta_timeout),
+        .Q      (             ),
+        .fim    (timeout      ),
+        .meio   (             )
+    );
 
     // (U3) registrador
     registrador_n #(

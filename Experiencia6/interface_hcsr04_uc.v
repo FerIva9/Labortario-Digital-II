@@ -18,6 +18,9 @@ module interface_hcsr04_uc (
     input wire       medir,
     input wire       echo,
     input wire       fim_medida,
+    input wire       timeout,
+    output reg       zera_timeout,
+    output reg       conta_timeout,
     output reg       zera,
     output reg       gera,
     output reg       registra,
@@ -51,7 +54,9 @@ module interface_hcsr04_uc (
             inicial:       Eprox = medir ? preparacao : inicial;
             preparacao:    Eprox = envia_trigger;
             envia_trigger: Eprox = espera_echo;
-            espera_echo:   Eprox = echo ? medida : espera_echo;
+            // Echo tem prioridade se chegar no mesmo ciclo do timeout.
+            espera_echo:   Eprox = echo ? medida :
+                                   (timeout ? envia_trigger : espera_echo);
             medida:        Eprox = fim_medida ? armazenamento : medida;
             armazenamento: Eprox = final_medida;
             final_medida:  Eprox = inicial;
@@ -66,10 +71,17 @@ module interface_hcsr04_uc (
         gera = 1'b0;
         registra = 1'b0;
         pronto = 1'b0;
+        // Cada tentativa inicia uma nova janela de 1 s.
+        zera_timeout = 1'b1;
+        conta_timeout = 1'b0;
 
         case (Eatual)
             preparacao:    zera = 1'b1;
             envia_trigger:  gera = 1'b1;
+            espera_echo: begin
+                zera_timeout = 1'b0;
+                conta_timeout = 1'b1;
+            end
             armazenamento:  registra = 1'b1;
             final_medida:   pronto = 1'b1;
             default: begin
