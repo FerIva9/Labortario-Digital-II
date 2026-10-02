@@ -3,6 +3,7 @@ module sonar_fd (
     input wire        clock,
     input wire        reset,
     input wire        echo,
+    input wire        entrada_serial,
 
     // Comandos vindos da unidade de controle.
     input wire        reset_fd,
@@ -23,12 +24,17 @@ module sonar_fd (
     output wire       fim_medida,
     output wire       pronto_serial,
     output wire       fim_2seg,
+    output wire       pronto_rx,
+    output wire [6:0] dados_ascii_rx,
+    output wire       paridade_rx,
+    output wire       paridade_par_rx,
 
     // Depuracao em valores binarios/BCD
     output wire [2:0]  db_posicao,
     output wire [11:0] db_medida,
     output wire [3:0]  db_estado_sensor,
-    output wire [3:0]  db_estado_serial
+    output wire [3:0]  db_estado_serial,
+    output wire [3:0]  db_estado_rx
 );
     wire        s_reset_fd;
     wire [2:0]  s_posicao;
@@ -108,6 +114,22 @@ module sonar_fd (
         .db_partida      (),
         .db_saida_serial (),
         .db_estado       (db_estado_serial)
+    );
+
+    // Receptor serial 7E1 para os comandos externos do sonar.
+    // A UC usara pronto_rx, dados_ascii_rx e paridade_par_rx
+    // para decidir as transicoes entre os modos de operacao.
+    rx_serial_7E1 RX_SERIAL (
+        .clock       (clock),
+        .reset       (s_reset_fd),
+        .RX          (entrada_serial),
+        .pronto      (pronto_rx),
+        .dados_ascii (dados_ascii_rx),
+        .paridade    (paridade_rx),
+        .paridade_par(paridade_par_rx),
+        .db_clock    (),
+        .db_tick     (),
+        .db_estado   (db_estado_rx)
     );
 
     // 100.000.000 ciclos de 20 ns correspondem a 2 segundos.
