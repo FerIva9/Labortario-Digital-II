@@ -162,7 +162,9 @@ module sonar_uc (
             inicial: reset_fd = 1'b1;
             preparacao: zera_timer = 1'b1;
             aguarda_2seg: conta_timer = 1'b1;
+            seleciona_modo: reset_fd = 1'b0;
             inicia_medida, inicia_medida_atencao: medir = 1'b1;
+            aguarda_medida, aguarda_medida_atencao: reset_fd = 1'b0;
 
             transmite_centena_angulo, transmite_centena_angulo_atencao: begin
                 sel_ascii = 3'b000; partida_serial = 1'b1;
