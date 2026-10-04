@@ -32,6 +32,7 @@ module sonar_fd (
     // Depuracao em valores binarios/BCD
     output wire [2:0]  db_posicao,
     output wire [11:0] db_medida,
+    output wire [11:0] db_angulo,
     output wire [6:0]  dados_ascii_tx,
     output wire [3:0]  db_estado_sensor,
     output wire [3:0]  db_estado_serial,
@@ -149,5 +150,6 @@ module sonar_fd (
 
     assign db_posicao    = s_posicao;
     assign db_medida     = s_medida;
+    assign db_angulo     = {s_angulo_ascii[19:16], s_angulo_ascii[11:8], s_angulo_ascii[3:0]};
     assign dados_ascii_tx = s_dados_ascii;
 endmodule
