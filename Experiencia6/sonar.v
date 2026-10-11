@@ -158,9 +158,9 @@ module sonar (
     assign s_hex4_group1 = {1'b0, s_dados_ascii_tx[6:4]};
     assign s_hex5_group1 = s_db_estado_serial;
 
-    // Grupo 10: estados internos do sonar e modo de operacao.
-    assign s_hex0_group2 = 4'h0;
-    assign s_hex1_group2 = 4'h0;
+    // Grupo 10: estado da UC principal em decimal em HEX1 e HEX0.
+    assign s_hex0_group2 = s_db_estado_uc % 10; // HEX0: unidades.
+    assign s_hex1_group2 = s_db_estado_uc / 10; // HEX1: dezenas.
     assign s_hex2_group2 = s_dados_ascii_tx[3:0];
     assign s_hex3_group2 = {1'b0, s_dados_ascii_tx[6:4]};
     assign s_hex4_group2 = s_db_estado_serial;
