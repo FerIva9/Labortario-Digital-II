@@ -1,8 +1,8 @@
 //------------------------------------------------------------------
 // Arquivo   : unidade_controle.v
-// Projeto   : Unidade de controle da Semana 1
+// Projeto   : Unidade de controle do Fabula TEA+
 //------------------------------------------------------------------
-// Descricao : Unidade de controle do circuito da Semana 1
+// Descricao : Maquina de Moore com 60 estados, conforme tabela aprovada
 //          
 //------------------------------------------------------------------
 // Revisoes  :
@@ -14,289 +14,552 @@
 //     20/02/2026  1.4     Fernando Ivanov   ajuste para exp6
 //     14/03/2026  2.0     Fernando Ivanov   ajuste para Semana 1
 //     21/03/2026  2.1     Thiago Martins    ajuste para Semana 2
+//     25/10/1016  3.1     Fernando Ivanov   ajuste para LabDigII
 //------------------------------------------------------------------
 //
 
 module unidade_controle (
-    // ENTRADAS
-
-    // Vindas do FD
+    input clock,
+    input reset,
+    input contar,
+    input recontar,
+    input relembrar,
+    // Condicoes vindas do FD. jogada recebe jogada_feita (pendencia).
     input fimHistoria,
     input fimExibicao,
     input jogada,
     input igual,
+    input pronto_serial,
 
-    // Vindas externamente
-    input clock,
-    input reset, // VEM BOTÃO
-    input contar, // VEM BOTÃO
-    input recontar, // VEM BOTÃO
-    input relembrar, // VEM BOTÃO
-
-
-    // SAÍDAS 
-
-
-    // Que irão para fora
     output reg acertou,
     output reg errou,
     output reg contando,
-    output reg relembrando,
     output reg recontando,
-
-
-    // Que irão para o FD
+    output reg relembrando,
     output reg contaC,
     output reg zeraC,
     output reg registraR,
     output reg zeraR,
-
     output reg registraModo,
     output reg escreve,
     output reg leds_BM,
-
     output reg contaExibicao,
     output reg zeraExibicao,
-
-    output reg resetEdgeDetector,
-
-    output reg [4:0] db_estado
+    output reg habilitaJogada,
+    output reg registraExibicao,
+    output reg registraHistoria,
+    output reg partida_serial,
+    output reg [2:0] selCaracter,
+    output wire [5:0] db_estado
 );
 
-    wire reset_debounced;
-    wire contar_debounced;
-    wire recontar_debounced;
-    wire relembrar_debounced;
+    localparam [5:0] inicial                                = 6'd0;
+    localparam [5:0] inicializa                             = 6'd1;
+    localparam [5:0] prepara_contagem                       = 6'd2;
+    localparam [5:0] espera_jogada_contagem                 = 6'd3;
+    localparam [5:0] registra_jogada_contagem               = 6'd4;
+    localparam [5:0] grava_jogada                           = 6'd5;
+    localparam [5:0] registra_exibicao_contagem             = 6'd6;
+    localparam [5:0] transmite_H_contagem                   = 6'd7;
+    localparam [5:0] espera_H_contagem                      = 6'd8;
+    localparam [5:0] transmite_historia_contagem            = 6'd9;
+    localparam [5:0] espera_historia_contagem               = 6'd10;
+    localparam [5:0] transmite_virgula_contagem             = 6'd11;
+    localparam [5:0] espera_virgula_contagem                = 6'd12;
+    localparam [5:0] transmite_P_contagem                   = 6'd13;
+    localparam [5:0] espera_P_contagem                      = 6'd14;
+    localparam [5:0] transmite_personagem_contagem          = 6'd15;
+    localparam [5:0] espera_personagem_contagem             = 6'd16;
+    localparam [5:0] transmite_LF_contagem                  = 6'd17;
+    localparam [5:0] espera_LF_contagem                     = 6'd18;
+    localparam [5:0] verifica_fim_contagem                  = 6'd19;
+    localparam [5:0] proxima_jogada_contagem                = 6'd20;
+    localparam [5:0] prepara_recontagem                     = 6'd21;
+    localparam [5:0] espera_jogada_recontagem               = 6'd22;
+    localparam [5:0] registra_jogada_recontagem             = 6'd23;
+    localparam [5:0] registra_exibicao_recontagem           = 6'd24;
+    localparam [5:0] transmite_H_recontagem                 = 6'd25;
+    localparam [5:0] espera_H_recontagem                    = 6'd26;
+    localparam [5:0] transmite_historia_recontagem          = 6'd27;
+    localparam [5:0] espera_historia_recontagem             = 6'd28;
+    localparam [5:0] transmite_virgula_recontagem           = 6'd29;
+    localparam [5:0] espera_virgula_recontagem              = 6'd30;
+    localparam [5:0] transmite_P_recontagem                 = 6'd31;
+    localparam [5:0] espera_P_recontagem                    = 6'd32;
+    localparam [5:0] transmite_personagem_recontagem        = 6'd33;
+    localparam [5:0] espera_personagem_recontagem           = 6'd34;
+    localparam [5:0] transmite_LF_recontagem                = 6'd35;
+    localparam [5:0] espera_LF_recontagem                   = 6'd36;
+    localparam [5:0] compara_jogada                         = 6'd37;
+    localparam [5:0] proxima_jogada_recontagem              = 6'd38;
+    localparam [5:0] fim_acertou                            = 6'd39;
+    localparam [5:0] fim_errou                              = 6'd40;
+    localparam [5:0] prepara_relembrar                      = 6'd41;
+    localparam [5:0] espera_memoria_relembrar               = 6'd42;
+    localparam [5:0] registra_exibicao_relembrar            = 6'd43;
+    localparam [5:0] transmite_H_relembrar                  = 6'd44;
+    localparam [5:0] espera_H_relembrar                     = 6'd45;
+    localparam [5:0] transmite_historia_relembrar           = 6'd46;
+    localparam [5:0] espera_historia_relembrar              = 6'd47;
+    localparam [5:0] transmite_virgula_relembrar            = 6'd48;
+    localparam [5:0] espera_virgula_relembrar               = 6'd49;
+    localparam [5:0] transmite_P_relembrar                  = 6'd50;
+    localparam [5:0] espera_P_relembrar                     = 6'd51;
+    localparam [5:0] transmite_personagem_relembrar         = 6'd52;
+    localparam [5:0] espera_personagem_relembrar            = 6'd53;
+    localparam [5:0] transmite_LF_relembrar                 = 6'd54;
+    localparam [5:0] espera_LF_relembrar                    = 6'd55;
+    localparam [5:0] mostra_jogada                          = 6'd56;
+    localparam [5:0] zera_timer                             = 6'd57;
+    localparam [5:0] verifica_fim_relembrar                 = 6'd58;
+    localparam [5:0] aumenta_limite_relembrar               = 6'd59;
 
-    debounce debounce_reset (
-        .clk(clock),
-        .button_in(reset),
-        .button_out(reset_debounced)
-    );
+    reg [5:0] Eatual, Eprox;
 
-    debounce debounce_contar (
-        .clk(clock),
-        .button_in(contar),
-        .button_out(contar_debounced)
-    );
-
-    debounce debounce_recontar (
-        .clk(clock),
-        .button_in(recontar),
-        .button_out(recontar_debounced)
-    );
-
-    debounce debounce_relembrar (
-        .clk(clock),
-        .button_in(relembrar),
-        .button_out(relembrar_debounced)
-    );
-
-
-
-    // Define estados
-    parameter inicial                      = 5'b00000;  // 0
-    parameter inicializa                   = 5'b00001;  // 1
-    parameter prepara_contagem             = 5'b00010;  // 2
-    parameter espera_jogada_contagem       = 5'b00011;  // 3
-    parameter registra_jogada_contagem     = 5'b00100;  // 4
-    parameter grava_jogada                 = 5'b00101;  // 5
-    parameter verifica_fim_contagem        = 5'b00110;  // 6
-    parameter proxima_jogada_contagem      = 5'b00111;  // 7
-    parameter prepara_recontagem           = 5'b01000;  // 8
-    parameter espera_jogada_recontagem     = 5'b01001;  // 9
-    parameter fim_acertou                  = 5'b01010;  // A
-    parameter registra_jogada_recontagem   = 5'b01011;  // B
-    parameter compara_jogada               = 5'b01100;  // C
-    parameter proxima_jogada_recontagem    = 5'b01101;  // D
-    parameter fim_errou                    = 5'b01110;  // E
-    parameter prepara_relembrar            = 5'b01111;  // F
-    parameter mostra_jogada                = 5'b10000;  // 10
-    parameter zera_timer                   = 5'b10001;  // 11
-    parameter verifica_fim_relembrar       = 5'b10010;  // 12
-    parameter mostra_apagado               = 5'b10011;  // 13
-    parameter aumenta_limite_relembrar     = 5'b10100;  // 14
-
-    // Variaveis de estado
-    reg [4:0] Eatual, Eprox;
-
-    // Memoria de estado
-    always @(posedge clock or posedge reset_debounced) begin
-        if (reset_debounced)
+    // Memoria de estado.
+    always @(posedge clock or posedge reset) begin
+        if (reset)
             Eatual <= inicial;
         else
             Eatual <= Eprox;
     end
 
-    // Logica de proximo estado
-    always @* begin
+    // Transicoes. Cada caractere tem partida (um ciclo) e espera separados.
+    always @(*) begin
+        Eprox = inicial;
         case (Eatual)
-
             inicial:
-                Eprox = (contar_debounced) ? inicializa : inicial;
-
+                Eprox = (contar) ? inicializa : (inicial);
             inicializa:
                 Eprox = prepara_contagem;
-
             prepara_contagem:
                 Eprox = espera_jogada_contagem;
-
             espera_jogada_contagem:
-                Eprox = (jogada) ? registra_jogada_contagem : espera_jogada_contagem;
-
+                Eprox = (jogada) ? registra_jogada_contagem : (espera_jogada_contagem);
             registra_jogada_contagem:
                 Eprox = grava_jogada;
-
             grava_jogada:
-                Eprox = verifica_fim_contagem;
-
+                Eprox = registra_exibicao_contagem;
+            registra_exibicao_contagem:
+                Eprox = transmite_H_contagem;
+            transmite_H_contagem:
+                Eprox = espera_H_contagem;
+            espera_H_contagem:
+                Eprox = (pronto_serial) ? transmite_historia_contagem : (espera_H_contagem);
+            transmite_historia_contagem:
+                Eprox = espera_historia_contagem;
+            espera_historia_contagem:
+                Eprox = (pronto_serial) ? transmite_virgula_contagem : (espera_historia_contagem);
+            transmite_virgula_contagem:
+                Eprox = espera_virgula_contagem;
+            espera_virgula_contagem:
+                Eprox = (pronto_serial) ? transmite_P_contagem : (espera_virgula_contagem);
+            transmite_P_contagem:
+                Eprox = espera_P_contagem;
+            espera_P_contagem:
+                Eprox = (pronto_serial) ? transmite_personagem_contagem : (espera_P_contagem);
+            transmite_personagem_contagem:
+                Eprox = espera_personagem_contagem;
+            espera_personagem_contagem:
+                Eprox = (pronto_serial) ? transmite_LF_contagem : (espera_personagem_contagem);
+            transmite_LF_contagem:
+                Eprox = espera_LF_contagem;
+            espera_LF_contagem:
+                Eprox = (pronto_serial) ? verifica_fim_contagem : (espera_LF_contagem);
             verifica_fim_contagem:
-                Eprox = (fimHistoria) ? prepara_recontagem : proxima_jogada_contagem;
-
+                Eprox = (fimHistoria) ? prepara_recontagem : (proxima_jogada_contagem);
             proxima_jogada_contagem:
                 Eprox = espera_jogada_contagem;
-
             prepara_recontagem:
                 Eprox = espera_jogada_recontagem;
-
             espera_jogada_recontagem:
-                Eprox = (jogada) ? registra_jogada_recontagem : espera_jogada_recontagem;
-
+                Eprox = (jogada) ? registra_jogada_recontagem : (espera_jogada_recontagem);
             registra_jogada_recontagem:
-                Eprox = compara_jogada;
-
+                Eprox = registra_exibicao_recontagem;
+            registra_exibicao_recontagem:
+                Eprox = transmite_H_recontagem;
+            transmite_H_recontagem:
+                Eprox = espera_H_recontagem;
+            espera_H_recontagem:
+                Eprox = (pronto_serial) ? transmite_historia_recontagem : (espera_H_recontagem);
+            transmite_historia_recontagem:
+                Eprox = espera_historia_recontagem;
+            espera_historia_recontagem:
+                Eprox = (pronto_serial) ? transmite_virgula_recontagem : (espera_historia_recontagem);
+            transmite_virgula_recontagem:
+                Eprox = espera_virgula_recontagem;
+            espera_virgula_recontagem:
+                Eprox = (pronto_serial) ? transmite_P_recontagem : (espera_virgula_recontagem);
+            transmite_P_recontagem:
+                Eprox = espera_P_recontagem;
+            espera_P_recontagem:
+                Eprox = (pronto_serial) ? transmite_personagem_recontagem : (espera_P_recontagem);
+            transmite_personagem_recontagem:
+                Eprox = espera_personagem_recontagem;
+            espera_personagem_recontagem:
+                Eprox = (pronto_serial) ? transmite_LF_recontagem : (espera_personagem_recontagem);
+            transmite_LF_recontagem:
+                Eprox = espera_LF_recontagem;
+            espera_LF_recontagem:
+                Eprox = (pronto_serial) ? compara_jogada : (espera_LF_recontagem);
             compara_jogada:
-                Eprox = (igual) ? ((fimHistoria) ? fim_acertou : proxima_jogada_recontagem) : fim_errou;
-            
-            fim_acertou:
-                Eprox = (contar_debounced) ? inicializa : fim_acertou;
-            
-            fim_errou:
-                Eprox = (recontar_debounced) ? inicializa : ((relembrar_debounced) ? prepara_relembrar : fim_errou);
-
+                Eprox = (!igual) ? fim_errou : ((fimHistoria) ? fim_acertou : (proxima_jogada_recontagem));
             proxima_jogada_recontagem:
                 Eprox = espera_jogada_recontagem;
-
+            fim_acertou:
+                Eprox = (contar) ? inicializa : (fim_acertou);
+            fim_errou:
+                Eprox = (recontar) ? inicializa : ((relembrar) ? prepara_relembrar : (fim_errou));
             prepara_relembrar:
-                Eprox = mostra_jogada;
-
+                Eprox = espera_memoria_relembrar;
+            espera_memoria_relembrar:
+                Eprox = registra_exibicao_relembrar;
+            registra_exibicao_relembrar:
+                Eprox = transmite_H_relembrar;
+            transmite_H_relembrar:
+                Eprox = espera_H_relembrar;
+            espera_H_relembrar:
+                Eprox = (pronto_serial) ? transmite_historia_relembrar : (espera_H_relembrar);
+            transmite_historia_relembrar:
+                Eprox = espera_historia_relembrar;
+            espera_historia_relembrar:
+                Eprox = (pronto_serial) ? transmite_virgula_relembrar : (espera_historia_relembrar);
+            transmite_virgula_relembrar:
+                Eprox = espera_virgula_relembrar;
+            espera_virgula_relembrar:
+                Eprox = (pronto_serial) ? transmite_P_relembrar : (espera_virgula_relembrar);
+            transmite_P_relembrar:
+                Eprox = espera_P_relembrar;
+            espera_P_relembrar:
+                Eprox = (pronto_serial) ? transmite_personagem_relembrar : (espera_P_relembrar);
+            transmite_personagem_relembrar:
+                Eprox = espera_personagem_relembrar;
+            espera_personagem_relembrar:
+                Eprox = (pronto_serial) ? transmite_LF_relembrar : (espera_personagem_relembrar);
+            transmite_LF_relembrar:
+                Eprox = espera_LF_relembrar;
+            espera_LF_relembrar:
+                Eprox = (pronto_serial) ? mostra_jogada : (espera_LF_relembrar);
             mostra_jogada:
-                Eprox = (fimExibicao) ? zera_timer : mostra_jogada;
-
+                Eprox = (fimExibicao) ? zera_timer : (mostra_jogada);
             zera_timer:
                 Eprox = verifica_fim_relembrar;
-
             verifica_fim_relembrar:
-                Eprox = (fimHistoria) ? prepara_recontagem : mostra_apagado;
-
-            mostra_apagado:
-                Eprox = (fimExibicao) ? aumenta_limite_relembrar : mostra_apagado;
-
+                Eprox = (fimHistoria) ? prepara_recontagem : (aumenta_limite_relembrar);
             aumenta_limite_relembrar:
-                Eprox = mostra_jogada;
-
-            default:
-                Eprox = inicial;
-
+                Eprox = espera_memoria_relembrar;
+            default: Eprox = inicial;
         endcase
     end
 
-    // Logica de saida (maquina Moore)
-    always @* begin
-        
-        acertou = (Eatual == fim_acertou) ? 1'b1 : 1'b0;
+    // Saidas de Moore: nenhuma entrada externa participa desta logica.
+    // Valores padrao tambem definem o comportamento de estados invalidos.
+    // contaExibicao so e habilitada em mostra_jogada (relembrar).
+    always @(*) begin
+        acertou = 1'b0;
+        errou = 1'b0;
+        contando = 1'b0;
+        recontando = 1'b0;
+        relembrando = 1'b0;
+        contaC = 1'b0;
+        zeraC = 1'b0;
+        registraR = 1'b0;
+        zeraR = 1'b0;
+        registraModo = 1'b0;
+        escreve = 1'b0;
+        leds_BM = 1'b0;
+        contaExibicao = 1'b0;
+        zeraExibicao = 1'b0;
+        habilitaJogada = 1'b0;
+        registraExibicao = 1'b0;
+        registraHistoria = 1'b0;
+        partida_serial = 1'b0;
+        selCaracter = 3'b000;
 
-        errou = (Eatual == fim_errou) ? 1'b1 : 1'b0;
-
-        contando = (Eatual == prepara_contagem ||
-                    Eatual == espera_jogada_contagem ||
-                    Eatual == registra_jogada_contagem ||
-                    Eatual == grava_jogada ||
-                    Eatual == verifica_fim_contagem ||
-                    Eatual == proxima_jogada_contagem ) ? 1'b1 : 1'b0;
-
-        recontando = (Eatual == prepara_recontagem ||
-                      Eatual == espera_jogada_recontagem ||
-                      Eatual == registra_jogada_recontagem ||
-                      Eatual == compara_jogada ||
-                      Eatual == proxima_jogada_recontagem ) ? 1'b1 : 1'b0;
-
-        relembrando = (Eatual == prepara_relembrar ||
-                       Eatual == mostra_jogada ||
-                       Eatual == zera_timer ||
-                       Eatual == verifica_fim_relembrar ||
-                       Eatual == mostra_apagado ||
-                       Eatual == aumenta_limite_relembrar ) ? 1'b1 : 1'b0;
-
-        contaC = (Eatual == proxima_jogada_contagem ||
-                  Eatual == proxima_jogada_recontagem ||
-                  Eatual == aumenta_limite_relembrar) ? 1'b1 : 1'b0;
-
-        zeraC = (Eatual == inicial ||
-                 Eatual == inicializa ||
-                 Eatual == prepara_contagem ||
-                 Eatual == prepara_recontagem ||
-                 Eatual == prepara_relembrar ) ? 1'b1 : 1'b0;
-
-        registraR = (Eatual == registra_jogada_contagem ||
-                     Eatual == registra_jogada_recontagem) ? 1'b1 : 1'b0;
-                    
-        zeraR = (Eatual == inicial || 
-                 Eatual == inicializa) ? 1'b1 : 1'b0;
-
-        registraModo = (Eatual == inicial ||
-                        Eatual == fim_acertou ) ? 1'b1 : 1'b0;
-        
-        escreve = (Eatual == grava_jogada) ? 1'b1 : 1'b0;
-
-        leds_BM = (Eatual == prepara_relembrar ||
-                   Eatual == mostra_jogada || 
-                   Eatual == zera_timer ||
-                   Eatual == verifica_fim_relembrar ||
-                   Eatual == mostra_apagado ||
-                   Eatual == aumenta_limite_relembrar) ? 1'b1 : 1'b0;
-        
-
-        contaExibicao = (Eatual == mostra_jogada ||
-                         Eatual == mostra_apagado ) ? 1'b1 : 1'b0;
-
-        zeraExibicao = (Eatual == inicial ||
-                        Eatual == inicializa ||
-                        Eatual == prepara_recontagem ||
-                        Eatual == aumenta_limite_relembrar) ? 1'b1 : 1'b0;
-
-        resetEdgeDetector = (Eatual == inicial ||
-                             Eatual == inicializa) ? 1'b1 : 1'b0;
-
-
-    end
-
-    // Saida de depuracao (estado)
-    always @* begin
         case (Eatual)
-            inicial:                        db_estado = 5'b00000; // 0
-            inicializa:                     db_estado = 5'b00001; // 1
-            prepara_contagem:               db_estado = 5'b00010; // 2
-            espera_jogada_contagem:         db_estado = 5'b00011; // 3
-            registra_jogada_contagem:       db_estado = 5'b00100; // 4
-            grava_jogada:                   db_estado = 5'b00101; // 5
-            verifica_fim_contagem:          db_estado = 5'b00110; // 6
-            proxima_jogada_contagem:        db_estado = 5'b00111; // 7
-            prepara_recontagem:             db_estado = 5'b01000; // 8
-            espera_jogada_recontagem:       db_estado = 5'b01001; // 9
-            fim_acertou:                   db_estado = 5'b01010; // A
-            registra_jogada_recontagem:     db_estado = 5'b01011; // B
-            compara_jogada:                 db_estado = 5'b01100; // C
-            proxima_jogada_recontagem:      db_estado = 5'b01101; // D
-            fim_errou:                      db_estado = 5'b01110; // E
-            prepara_relembrar:              db_estado = 5'b01111; // F
-            mostra_jogada:                  db_estado = 5'b10000; // 10
-            zera_timer:                     db_estado = 5'b10001; // 11
-            verifica_fim_relembrar:         db_estado = 5'b10010; // 12
-            mostra_apagado:                 db_estado = 5'b10011; // 13
-            aumenta_limite_relembrar:       db_estado = 5'b10100; // 14
-            default:                        db_estado = 5'b11111; // erro
+            inicial: begin
+                zeraC = 1'b1;
+                zeraR = 1'b1;
+                zeraExibicao = 1'b1;
+            end
+            inicializa: begin
+                zeraC = 1'b1;
+                zeraR = 1'b1;
+                registraModo = 1'b1;
+                zeraExibicao = 1'b1;
+                registraHistoria = 1'b1;
+            end
+            prepara_contagem: begin
+                contando = 1'b1;
+                zeraC = 1'b1;
+            end
+            espera_jogada_contagem: begin
+                contando = 1'b1;
+                habilitaJogada = 1'b1;
+            end
+            registra_jogada_contagem: begin
+                contando = 1'b1;
+                registraR = 1'b1;
+            end
+            grava_jogada: begin
+                contando = 1'b1;
+                escreve = 1'b1;
+            end
+            registra_exibicao_contagem: begin
+                contando = 1'b1;
+                registraExibicao = 1'b1;
+            end
+            transmite_H_contagem: begin
+                contando = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b000;
+            end
+            espera_H_contagem: begin
+                contando = 1'b1;
+                selCaracter = 3'b000;
+            end
+            transmite_historia_contagem: begin
+                contando = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b001;
+            end
+            espera_historia_contagem: begin
+                contando = 1'b1;
+                selCaracter = 3'b001;
+            end
+            transmite_virgula_contagem: begin
+                contando = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b010;
+            end
+            espera_virgula_contagem: begin
+                contando = 1'b1;
+                selCaracter = 3'b010;
+            end
+            transmite_P_contagem: begin
+                contando = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b011;
+            end
+            espera_P_contagem: begin
+                contando = 1'b1;
+                selCaracter = 3'b011;
+            end
+            transmite_personagem_contagem: begin
+                contando = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b100;
+            end
+            espera_personagem_contagem: begin
+                contando = 1'b1;
+                selCaracter = 3'b100;
+            end
+            transmite_LF_contagem: begin
+                contando = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b101;
+            end
+            espera_LF_contagem: begin
+                contando = 1'b1;
+                selCaracter = 3'b101;
+            end
+            verifica_fim_contagem: begin
+                contando = 1'b1;
+            end
+            proxima_jogada_contagem: begin
+                contando = 1'b1;
+                contaC = 1'b1;
+            end
+            prepara_recontagem: begin
+                recontando = 1'b1;
+                zeraC = 1'b1;
+                zeraR = 1'b1;
+            end
+            espera_jogada_recontagem: begin
+                recontando = 1'b1;
+                habilitaJogada = 1'b1;
+            end
+            registra_jogada_recontagem: begin
+                recontando = 1'b1;
+                registraR = 1'b1;
+            end
+            registra_exibicao_recontagem: begin
+                recontando = 1'b1;
+                registraExibicao = 1'b1;
+            end
+            transmite_H_recontagem: begin
+                recontando = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b000;
+            end
+            espera_H_recontagem: begin
+                recontando = 1'b1;
+                selCaracter = 3'b000;
+            end
+            transmite_historia_recontagem: begin
+                recontando = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b001;
+            end
+            espera_historia_recontagem: begin
+                recontando = 1'b1;
+                selCaracter = 3'b001;
+            end
+            transmite_virgula_recontagem: begin
+                recontando = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b010;
+            end
+            espera_virgula_recontagem: begin
+                recontando = 1'b1;
+                selCaracter = 3'b010;
+            end
+            transmite_P_recontagem: begin
+                recontando = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b011;
+            end
+            espera_P_recontagem: begin
+                recontando = 1'b1;
+                selCaracter = 3'b011;
+            end
+            transmite_personagem_recontagem: begin
+                recontando = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b100;
+            end
+            espera_personagem_recontagem: begin
+                recontando = 1'b1;
+                selCaracter = 3'b100;
+            end
+            transmite_LF_recontagem: begin
+                recontando = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b101;
+            end
+            espera_LF_recontagem: begin
+                recontando = 1'b1;
+                selCaracter = 3'b101;
+            end
+            compara_jogada: begin
+                recontando = 1'b1;
+            end
+            proxima_jogada_recontagem: begin
+                recontando = 1'b1;
+                contaC = 1'b1;
+            end
+            fim_acertou: begin
+                acertou = 1'b1;
+            end
+            fim_errou: begin
+                errou = 1'b1;
+            end
+            prepara_relembrar: begin
+                relembrando = 1'b1;
+                zeraC = 1'b1;
+                zeraR = 1'b1;
+                leds_BM = 1'b1;
+                zeraExibicao = 1'b1;
+            end
+            espera_memoria_relembrar: begin
+                relembrando = 1'b1;
+                leds_BM = 1'b1;
+            end
+            registra_exibicao_relembrar: begin
+                relembrando = 1'b1;
+                leds_BM = 1'b1;
+                zeraExibicao = 1'b1;
+                registraExibicao = 1'b1;
+            end
+            transmite_H_relembrar: begin
+                relembrando = 1'b1;
+                leds_BM = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b000;
+            end
+            espera_H_relembrar: begin
+                relembrando = 1'b1;
+                leds_BM = 1'b1;
+                selCaracter = 3'b000;
+            end
+            transmite_historia_relembrar: begin
+                relembrando = 1'b1;
+                leds_BM = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b001;
+            end
+            espera_historia_relembrar: begin
+                relembrando = 1'b1;
+                leds_BM = 1'b1;
+                selCaracter = 3'b001;
+            end
+            transmite_virgula_relembrar: begin
+                relembrando = 1'b1;
+                leds_BM = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b010;
+            end
+            espera_virgula_relembrar: begin
+                relembrando = 1'b1;
+                leds_BM = 1'b1;
+                selCaracter = 3'b010;
+            end
+            transmite_P_relembrar: begin
+                relembrando = 1'b1;
+                leds_BM = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b011;
+            end
+            espera_P_relembrar: begin
+                relembrando = 1'b1;
+                leds_BM = 1'b1;
+                selCaracter = 3'b011;
+            end
+            transmite_personagem_relembrar: begin
+                relembrando = 1'b1;
+                leds_BM = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b100;
+            end
+            espera_personagem_relembrar: begin
+                relembrando = 1'b1;
+                leds_BM = 1'b1;
+                selCaracter = 3'b100;
+            end
+            transmite_LF_relembrar: begin
+                relembrando = 1'b1;
+                leds_BM = 1'b1;
+                partida_serial = 1'b1;
+                selCaracter = 3'b101;
+            end
+            espera_LF_relembrar: begin
+                relembrando = 1'b1;
+                leds_BM = 1'b1;
+                selCaracter = 3'b101;
+            end
+            mostra_jogada: begin
+                relembrando = 1'b1;
+                leds_BM = 1'b1;
+                contaExibicao = 1'b1;
+            end
+            zera_timer: begin
+                relembrando = 1'b1;
+                leds_BM = 1'b1;
+                zeraExibicao = 1'b1;
+            end
+            verifica_fim_relembrar: begin
+                relembrando = 1'b1;
+                leds_BM = 1'b1;
+            end
+            aumenta_limite_relembrar: begin
+                relembrando = 1'b1;
+                contaC = 1'b1;
+                leds_BM = 1'b1;
+                zeraExibicao = 1'b1;
+            end
+            default: begin end
         endcase
     end
 
+    assign db_estado = Eatual;
 endmodule
