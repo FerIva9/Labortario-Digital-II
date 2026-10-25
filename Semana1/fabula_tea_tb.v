@@ -86,6 +86,8 @@ module fabula_tea_tb;
     initial begin
         #1; reset = 0; #1; reset = 1;
         repeat (4) @(negedge clock);
+        verificar(HEX0 == 7'b1111111 && HEX5 == 7'b1111111,
+                  "HEX0 e HEX5 apagados durante reset");
         reset = 0;
         @(negedge clock);
         verificar(HEX0 == 7'b1000000 && HEX1 == 7'b1000000 &&

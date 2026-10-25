@@ -93,12 +93,17 @@ module fabula_tea (
                       recontando ? 4'd2 :
                       contando ? 4'd1 : 4'd0;
 
-    hexa7seg display_historia  (.hexa({2'b00, db_historia}),       .display(HEX0));
+    // Apagar HEX0/HEX5 durante reset evita segmentos permanentemente em GND.
+    hexa7seg_3bits display_historia (
+        .hexa({1'b0, db_historia}), .enable(~reset), .display(HEX0)
+    );
     hexa7seg display_personagem(.hexa({1'b0, db_personagem}),     .display(HEX1));
     hexa7seg display_contagem  (.hexa(db_contagem),               .display(HEX2));
     hexa7seg display_situacao  (.hexa(situacao),                  .display(HEX3));
     hexa7seg display_estado_lo (.hexa(db_estado[3:0]),           .display(HEX4));
-    hexa7seg display_estado_hi (.hexa({2'b00, db_estado[5:4]}),   .display(HEX5));
+    hexa7seg_3bits display_estado_hi (
+        .hexa({1'b0, db_estado[5:4]}), .enable(~reset), .display(HEX5)
+    );
 
     assign db_rx_serial = entrada_serial;
     assign db_pwm = pwm;
