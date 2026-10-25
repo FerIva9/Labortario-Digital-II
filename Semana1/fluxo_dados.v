@@ -58,7 +58,10 @@ module fluxo_dados (
 
     output [3:0] db_contagem,
     output [5:0] db_memoria,
-    output [1:0] db_tamanhohistoria
+    output [1:0] db_tamanhohistoria,
+    output [1:0] db_historia, // historia registrada para HEX0
+    output [2:0] db_personagem, // posicao apresentada para HEX1
+    output db_pronto_rx // conclusao de um caractere recebido
 
 );
 
@@ -262,6 +265,9 @@ module fluxo_dados (
     assign db_contagem = contador_w;
     assign db_memoria = memoriaData_w;
     assign db_tamanhohistoria = modoReg_w;
+    assign db_historia = historia_w;
+    assign db_personagem = posicao_w;
+    assign db_pronto_rx = pronto_rx_w;
 
 
 
