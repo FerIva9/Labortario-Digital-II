@@ -1,13 +1,17 @@
 """Apresentador desktop Fábula TEA +. Execute: python app.py."""
 import csv
 import json
+import sys
 from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox
+from tkinter import font as tkfont
 from PIL import Image, ImageTk, ImageOps
 
 from protocol import Decoder, Event
 from runtime_paths import CATALOG_PATH, image_path, records_dir
+from ui_layout import ScrollableFrame
+from windows_display import configure_display
 
 LANCZOS = getattr(Image, 'Resampling', Image).LANCZOS
 
@@ -27,37 +31,43 @@ class App:
         self.writer = None
         self.count = 0
         self.current_event = None
+        self.presentation_mode = False
         self.thumbnails = []
         self.cards = []
         self.image_cache = {}
         self.resize_job = None
         root.title('Fábula TEA + • Um mundo de histórias')
-        root.geometry('1240x900')
-        root.minsize(1000, 780)
+        screen_width, screen_height = root.winfo_screenwidth(), root.winfo_screenheight()
+        width, height = min(1240, int(screen_width * .9)), min(900, int(screen_height * .85))
+        root.geometry(f'{width}x{height}')
+        root.minsize(min(720, width), min(480, height))
+        self.font_family = 'Segoe UI' if sys.platform == 'win32' else 'DejaVu Sans'
         root.configure(bg='#f5f4f0')
         root.protocol('WM_DELETE_WINDOW', self.close)
-        root.bind('<F11>', lambda _: root.attributes('-fullscreen', not root.attributes('-fullscreen')))
-        root.bind('<Escape>', lambda _: root.attributes('-fullscreen', False))
+        root.bind('<F11>', self.toggle_presentation)
+        root.bind('<Escape>', self.exit_presentation)
         style = ttk.Style()
         style.theme_use('clam')
-        style.configure('TCombobox', padding=7, font=('DejaVu Sans', 10), fieldbackground='white')
-        style.configure('TButton', font=('DejaVu Sans', 10), padding=(12, 9), background='#edf0f3', borderwidth=0)
+        style.configure('TCombobox', padding=7, font=(self.font_family, 10), fieldbackground='white')
+        style.configure('TButton', font=(self.font_family, 10), padding=(12, 9), background='#edf0f3', borderwidth=0)
         style.map('TButton', background=[('active', '#dce5eb')])
         style.configure('Accent.TButton', background='#23665e', foreground='white')
         style.map('Accent.TButton', background=[('active', '#174e47'), ('disabled', '#cedbd8')])
-        style.configure('Treeview', background='white', fieldbackground='white', foreground='#293d48', rowheight=30, borderwidth=0, font=('DejaVu Sans', 10))
-        style.configure('Treeview.Heading', background='#eef2f3', foreground='#657780', font=('DejaVu Sans', 9, 'bold'), padding=8)
+        style.configure('Treeview', background='white', fieldbackground='white', foreground='#293d48', rowheight=max(30, tkfont.Font(root=root, family=self.font_family, size=10).metrics('linespace') + 12), borderwidth=0, font=(self.font_family, 10))
+        style.configure('Treeview.Heading', background='#eef2f3', foreground='#657780', font=(self.font_family, 9, 'bold'), padding=8)
         style.map('Treeview', background=[('selected', '#d8ede7')], foreground=[('selected', '#183d35')])
         style.configure('TNotebook', background='#f5f4f0', borderwidth=0)
-        style.configure('TNotebook.Tab', padding=(18, 9), background='#e9ece9', font=('DejaVu Sans', 10))
+        style.configure('TNotebook.Tab', padding=(18, 9), background='#e9ece9', font=(self.font_family, 10))
         style.map('TNotebook.Tab', background=[('selected', '#ffffff')])
 
         def label(parent, text='', size=10, color='#667c83', bg='#f5f4f0', bold=False, **kw):
-            return tk.Label(parent, text=text, font=('DejaVu Sans', size, 'bold' if bold else 'normal'), fg=color, bg=bg, **kw)
+            return tk.Label(parent, text=text, font=(self.font_family, size, 'bold' if bold else 'normal'), fg=color, bg=bg, **kw)
 
-        sidebar = tk.Frame(root, bg='#183e3a', width=260)
-        sidebar.pack(side='left', fill='y')
-        sidebar.pack_propagate(False)
+        root.rowconfigure(0, weight=1)
+        root.columnconfigure(1, weight=1)
+        self.sidebar_view = ScrollableFrame(root, '#183e3a', fit_content_width=True)
+        self.sidebar_view.grid(row=0, column=0, sticky='ns')
+        sidebar = self.sidebar_view.content
         label(sidebar, 'FÁBULA', 24, '#ffffff', '#183e3a', True).pack(anchor='w', padx=25, pady=(30, 0))
         label(sidebar, 'TEA +', 16, '#a9d9c8', '#183e3a', True).pack(anchor='w', padx=27)
         label(sidebar, 'Um mundo de histórias', 10, '#b7cec8', '#183e3a').pack(anchor='w', padx=27, pady=(8, 30))
@@ -82,39 +92,53 @@ class App:
         self.demo_button = ttk.Button(sidebar, text='Apresentar personagem', style='Accent.TButton', command=self.demo)
         self.demo_button.pack(fill='x', padx=25, pady=12)
         label(sidebar, 'Abra a galeria em\nMostrar cartões e histórico.', 9, '#b7cec8', '#183e3a', justify='left').pack(anchor='w', padx=25)
-        label(sidebar, 'F11  Tela cheia\nEsc  Voltar à janela', 9, '#b7cec8', '#183e3a', justify='left').pack(side='bottom', anchor='w', padx=25, pady=25)
+        label(sidebar, 'F11  Somente personagem\nEsc  Voltar à interface', 9, '#b7cec8', '#183e3a', justify='left').pack(side='bottom', anchor='w', padx=25, pady=25)
 
-        panel = tk.Frame(root, bg='#f5f4f0', padx=18, pady=14)
-        panel.pack(side='left', fill='both', expand=True)
+        self.main_view = ScrollableFrame(root, '#f5f4f0')
+        self.main_view.grid(row=0, column=1, sticky='nsew')
+        panel = self.main_view.content
+        panel.configure(padx=14, pady=12)
+        panel.columnconfigure(0, weight=1)
+        panel.rowconfigure(1, weight=1)
         top = tk.Frame(panel, bg='#f5f4f0')
-        top.pack(fill='x', pady=(0, 10))
-        label(top, 'Hora de imaginar', 23, '#243e43', bold=True).pack(side='left')
+        top.grid(row=0, column=0, sticky='ew', pady=(0, 10))
+        top.columnconfigure(0, weight=1)
+        self.heading = label(top, 'Hora de imaginar', 23, '#243e43', bold=True, anchor='w', justify='left')
+        self.heading.grid(row=0, column=0, sticky='ew')
         self.mode_label = label(top, '  EXPLORAR  ', 9, '#23665e', '#deeee7', True, padx=10, pady=7)
-        self.mode_label.pack(side='right')
+        ttk.Button(top, text='Tela cheia · personagem', style='Accent.TButton',
+                   command=self.toggle_presentation).grid(row=1, column=0, columnspan=2, sticky='e', pady=(8, 0))
+        self.mode_label.grid(row=0, column=1, padx=(10, 0))
+        top.bind('<Configure>', lambda event: self.heading.configure(wraplength=max(80, event.width - self.mode_label.winfo_reqwidth() - 20)))
         stage = tk.Frame(panel, bg='white', highlightbackground='#e3e7e4', highlightthickness=1)
-        stage.pack(fill='both', expand=True)
+        stage.grid(row=1, column=0, sticky='nsew')
+        stage.columnconfigure(0, weight=1)
+        stage.rowconfigure(1, weight=1)
         self.story_label = label(stage, 'Escolha uma história', 11, '#637a7c', 'white', True)
-        self.story_label.pack(pady=(10, 0))
-        self.canvas = tk.Canvas(stage, height=280, bg='white', highlightthickness=0)
-        self.canvas.pack(fill='both', expand=True, padx=4)
+        self.story_label.grid(row=0, column=0, sticky='ew', pady=(10, 0))
+        self.canvas = tk.Canvas(stage, width=1, height=200, bg='white', highlightthickness=0)
+        self.canvas.grid(row=1, column=0, sticky='nsew', padx=4)
         self.canvas.bind('<Configure>', self.schedule_render)
         self.name_label = label(stage, 'Toda aventura começa com uma ideia', 22, '#243e43', 'white', True)
-        self.name_label.pack(pady=(0, 4))
+        self.name_label.grid(row=2, column=0, sticky='ew', pady=(0, 4))
         self.code_label = label(stage, 'Escolha um cartão abaixo para começar.', 10, '#788a8d', 'white')
-        self.code_label.pack(pady=(0, 10))
+        self.code_label.grid(row=3, column=0, sticky='ew', pady=(0, 10))
+        stage.bind('<Configure>', self.wrap_stage_labels)
 
         self.details = tk.Frame(panel, bg='#f5f4f0')
         tabs = ttk.Notebook(self.details)
         tabs.pack(fill='x')
         gallery = tk.Frame(tabs, bg='white', padx=10, pady=12)
         history_panel = tk.Frame(tabs, bg='white', padx=10, pady=10)
-        tabs.add(gallery, text='Cartões da história')
-        tabs.add(history_panel, text='Histórico de apresentações')
+        tabs.add(gallery, text='Cartões')
+        tabs.add(history_panel, text='Histórico')
         self.gallery = tk.Frame(gallery, bg='white')
         self.gallery.pack(fill='x')
+        self.gallery_columns = None
+        self.gallery.bind('<Configure>', self.layout_gallery)
         for i in range(6):
             card = tk.Button(self.gallery, bg='white', fg='#385057', activebackground='#e1eee8', relief='flat', borderwidth=0,
-                             highlightthickness=2, highlightbackground='#edf0ed', font=('DejaVu Sans', 9), compound='top',
+                             highlightthickness=2, highlightbackground='#edf0ed', font=(self.font_family, 9), compound='top',
                              cursor='hand2', command=lambda index=i: self.select_card(index), wraplength=85, pady=5)
             card.grid(row=0, column=i, padx=4, sticky='nsew')
             self.gallery.columnconfigure(i, weight=1, uniform='cards')
@@ -126,25 +150,68 @@ class App:
         scrollbar = ttk.Scrollbar(history_panel, orient='vertical', command=self.history.yview)
         self.history.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side='right', fill='y')
+        horizontal = ttk.Scrollbar(history_panel, orient='horizontal', command=self.history.xview)
+        self.history.configure(xscrollcommand=horizontal.set)
         self.history.pack(fill='x')
+        horizontal.pack(fill='x')
         ttk.Button(history_panel, text='Limpar histórico visual', command=self.clear_history).pack(anchor='e', pady=(8, 0))
         self.footer = tk.Frame(panel, bg='#f5f4f0')
-        self.footer.pack(fill='x', pady=(10, 0))
+        self.footer.grid(row=3, column=0, sticky='ew', pady=(10, 0))
+        self.footer.columnconfigure(0, weight=1)
         self.details_button = ttk.Button(self.footer, text='Mostrar cartões e histórico', command=self.toggle_details)
-        self.details_button.pack(side='right', padx=(12, 0))
+        self.details_button.grid(row=1, column=0, sticky='e', pady=(8, 0))
         self.status = tk.StringVar(value='Escolha um personagem na lateral para começar.')
-        label(self.footer, textvariable=self.status, size=9, wraplength=470, anchor='w', justify='left').pack(side='left', fill='x', expand=True)
+        self.status_label = label(self.footer, textvariable=self.status, size=9, anchor='w', justify='left')
+        self.status_label.grid(row=0, column=0, sticky='ew')
+        self.footer.bind('<Configure>', lambda event: self.status_label.configure(wraplength=max(80, event.width - 8)))
+        self.presentation_canvas = tk.Canvas(root, bg='white', highlightthickness=0, cursor='none')
+        self.presentation_canvas.bind('<Configure>', self.schedule_render)
         self.update_gallery()
         self.refresh_ports()
         root.after(30, self.poll)
 
+    def toggle_presentation(self, _event=None):
+        if self.presentation_mode:
+            return self.exit_presentation()
+        self.presentation_mode = True
+        self.root.attributes('-fullscreen', True)
+        self.presentation_canvas.place(x=0, y=0, relwidth=1, relheight=1)
+        tk.Misc.lift(self.presentation_canvas)
+        self.presentation_canvas.focus_set()
+        self.schedule_render()
+        return 'break'
+
+    def exit_presentation(self, _event=None):
+        if self.presentation_mode:
+            self.presentation_mode = False
+            self.presentation_canvas.place_forget()
+            self.canvas.focus_set()
+        self.root.attributes('-fullscreen', False)
+        self.schedule_render()
+        return 'break'
+
     def toggle_details(self):
         if self.details.winfo_manager():
-            self.details.pack_forget()
+            self.details.grid_remove()
             self.details_button.configure(text='Mostrar cartões e histórico')
         else:
-            self.details.pack(fill='x', pady=(10, 0), before=self.footer)
+            self.details.grid(row=2, column=0, sticky='ew', pady=(10, 0))
             self.details_button.configure(text='Recolher cartões e histórico')
+
+    def wrap_stage_labels(self, event):
+        for label in (self.story_label, self.name_label, self.code_label):
+            label.configure(wraplength=max(80, event.width - 24))
+
+    def layout_gallery(self, event):
+        card_width = max(100, *(card.winfo_reqwidth() + 8 for card in self.cards))
+        columns = max(1, min(6, event.width // card_width))
+        if columns == self.gallery_columns:
+            return
+        self.gallery_columns = columns
+        for column in range(6):
+            self.gallery.columnconfigure(column, weight=1 if column < columns else 0, uniform='cards' if column < columns else '')
+        for index, card in enumerate(self.cards):
+            card.grid(row=index // columns, column=index % columns, padx=4, pady=4, sticky='nsew')
 
     def load_image(self, relative_path):
         if relative_path not in self.image_cache:
@@ -183,11 +250,14 @@ class App:
 
     def render_image(self):
         self.resize_job = None
-        self.canvas.delete('all')
-        width, height = max(1, self.canvas.winfo_width()), max(1, self.canvas.winfo_height())
+        canvas = self.presentation_canvas if self.presentation_mode else self.canvas
+        canvas.delete('all')
+        width, height = max(1, canvas.winfo_width()), max(1, canvas.winfo_height())
         if self.current_event is None:
-            self.canvas.create_oval(width/2-70, height/2-70, width/2+70, height/2+70, fill='#e7f2ec', outline='')
-            self.canvas.create_text(width/2, height/2, text='Era uma\nvez…', justify='center', font=('DejaVu Sans', 24, 'bold'), fill='#397362')
+            if self.presentation_mode:
+                return
+            canvas.create_oval(width/2-70, height/2-70, width/2+70, height/2+70, fill='#e7f2ec', outline='')
+            canvas.create_text(width/2, height/2, text='Era uma\nvez…', justify='center', font=(self.font_family, 24, 'bold'), fill='#397362')
             return
         character = self.catalog[str(self.current_event.story)]['personagens'][self.current_event.character]
         try:
@@ -195,10 +265,10 @@ class App:
                 raise ValueError('Nenhuma imagem configurada')
             fitted = ImageOps.contain(self.load_image(character['imagem']), (max(1, width-8), max(1, height-4)), LANCZOS)
             self.photo = ImageTk.PhotoImage(fitted)
-            self.canvas.create_image(width/2, height/2, image=self.photo)
+            canvas.create_image(width/2, height/2, image=self.photo)
         except (OSError, ValueError) as error:
             self.photo = None
-            self.canvas.create_text(width/2, height/2, text=character.get('simbolo', '?'), font=('DejaVu Sans', 64), fill='#397362')
+            canvas.create_text(width/2, height/2, text=character.get('simbolo', '?'), font=(self.font_family, 64), fill='#397362')
             self.status.set(f'Cartão de reserva: {error}')
 
     def refresh_ports(self):
@@ -310,6 +380,7 @@ class App:
 
 
 if __name__ == '__main__':
+    configure_display()
     root = tk.Tk()
     try:
         App(root)

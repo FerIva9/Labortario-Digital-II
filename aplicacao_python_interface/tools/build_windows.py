@@ -35,6 +35,7 @@ def main():
         destination = image.relative_to(BASE).parent.as_posix()
         datas += ['--add-data', f'{image}:{destination}']
     run([python, '-m', 'PyInstaller', '--noconfirm', '--clean', '--onefile', '--windowed',
+         '--manifest', BASE / 'windows.manifest',
          '--name', 'FabulaTEA', '--hidden-import', 'serial.tools.list_ports_windows',
          *datas, BASE / 'app.py'])
     print(f'\nPronto: {BASE / "dist" / "FabulaTEA.exe"}')

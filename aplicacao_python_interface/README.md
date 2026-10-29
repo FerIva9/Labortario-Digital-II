@@ -94,3 +94,15 @@ No executável, os CSVs ficam em **`%LOCALAPPDATA%\FabulaTEA\registros`**. Para 
 Para alterar somente nomes ou associações sem recompilar, coloque uma cópia de `historias.json` ao lado do `.exe` e edite-a. Para imagens próprias, coloque também a pasta `assets` com os arquivos referenciados ao lado do executável. A aplicação usa essas imagens quando existem e procura as demais no pacote interno. Reinicie após as alterações. Um catálogo externo tem prioridade sobre o catálogo embutido: atualize ou remova essa cópia se quiser usar o catálogo de uma nova compilação.
 
 A preparação foi verificada em Linux; a criação e o teste final do `.exe` precisam ser feitos no Windows. Após gerar, abra o executável fora da pasta do código, teste uma imagem de cada história, verifique o CSV e depois faça a recepção serial com a placa conectada.
+
+## Apresentação somente do personagem
+
+Clique em **Tela cheia · personagem** ou pressione **F11** para ocupar a tela com apenas a imagem, em fundo branco e com proporção preservada. Controles, nomes e histórico ficam ocultos. **Esc** (ou F11 novamente) retorna à interface completa. A conexão serial continua ativa e cada mensagem válida atualiza o personagem em tela cheia; os registros continuam sendo salvos. Antes da primeira mensagem, a tela de apresentação fica em branco. Para usar essa mudança no executável Windows, gere novamente com `gerar_windows.cmd`.
+
+## Tamanho da janela e escala do Windows
+
+A janela inicial se ajusta ao tamanho da tela, usa Segoe UI no Windows e permite reduzir a janela. Os controles laterais e o painel principal oferecem rolagem vertical quando necessário; a galeria distribui os cartões em várias linhas conforme a largura disponível. Cabeçalho, rodapé e nomes longos se reorganizam com quebra de texto. A tabela tem rolagem horizontal e vertical. O modo somente personagem continua ocupando a tela inteira.
+
+`windows.manifest` declara a escala de DPI do sistema para o executável; ao rodar o código diretamente, `windows_display.py` configura isso antes de criar a janela. Não é necessário reduzir a escala do Windows para usar o aplicativo. A escala é a do sistema no início da execução; mudanças de escala durante o uso podem exigir reiniciar o aplicativo. Inclua `ui_layout.py`, `windows_display.py` e `windows.manifest` ao copiar o código para recompilar no Windows.
+
+Verificação gráfica opcional: `python tools/check_layout.py`. O script abre janelas temporárias para conferir três tamanhos (1240×900, 1024×650 e 800×600) em quatro escalas de fontes, incluindo galeria, limites dos controles, redimensionamento e apresentação de novos personagens em tela cheia. Esses testes foram executados em Linux; a conferência visual final no Windows continua necessária.
