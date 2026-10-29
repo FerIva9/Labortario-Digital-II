@@ -1,0 +1,146 @@
+{
+  "0": {
+    "nome": "Aventura pirata",
+    "cor": "#dff2f0",
+    "personagens": [
+      {
+        "nome": "Navio pirata",
+        "simbolo": "0",
+        "imagem": "assets/h0_p0.png"
+      },
+      {
+        "nome": "Mapa do tesouro",
+        "simbolo": "1",
+        "imagem": "assets/h0_p1.png"
+      },
+      {
+        "nome": "Ilha",
+        "simbolo": "2",
+        "imagem": "assets/h0_p2.png"
+      },
+      {
+        "nome": "Tesouro",
+        "simbolo": "3",
+        "imagem": "assets/h0_p3.png"
+      },
+      {
+        "nome": "Pirata",
+        "simbolo": "4",
+        "imagem": "assets/h0_p4.png"
+      },
+      {
+        "nome": "Tempestade",
+        "simbolo": "5",
+        "imagem": "assets/h0_p5.png"
+      }
+    ]
+  },
+  "1": {
+    "nome": "Reino encantado",
+    "cor": "#f6ead7",
+    "personagens": [
+      {
+        "nome": "Cavaleiro",
+        "simbolo": "0",
+        "imagem": "assets/h1_p0.png"
+      },
+      {
+        "nome": "Dragão",
+        "simbolo": "1",
+        "imagem": "assets/h1_p1.png"
+      },
+      {
+        "nome": "Castelo",
+        "simbolo": "2",
+        "imagem": "assets/h1_p2.png"
+      },
+      {
+        "nome": "Floresta",
+        "simbolo": "3",
+        "imagem": "assets/h1_p3.png"
+      },
+      {
+        "nome": "Tesouro",
+        "simbolo": "4",
+        "imagem": "assets/h1_p4.png"
+      },
+      {
+        "nome": "Princesa",
+        "simbolo": "5",
+        "imagem": "assets/h1_p5.png"
+      }
+    ]
+  },
+  "2": {
+    "nome": "Viagem espacial",
+    "cor": "#eae5fa",
+    "personagens": [
+      {
+        "nome": "Foguete",
+        "simbolo": "0",
+        "imagem": "assets/h2_p0.png"
+      },
+      {
+        "nome": "Astronauta",
+        "simbolo": "1",
+        "imagem": "assets/h2_p1.png"
+      },
+      {
+        "nome": "Planeta",
+        "simbolo": "2",
+        "imagem": "assets/h2_p2.png"
+      },
+      {
+        "nome": "Alienígena",
+        "simbolo": "3",
+        "imagem": "assets/h2_p3.png"
+      },
+      {
+        "nome": "Base espacial",
+        "simbolo": "4",
+        "imagem": "assets/h2_p4.png"
+      },
+      {
+        "nome": "Pistola espacial",
+        "simbolo": "5",
+        "imagem": "assets/h2_p5.png"
+      }
+    ]
+  },
+  "3": {
+    "nome": "Minha rotina",
+    "cor": "#e3effa",
+    "personagens": [
+      {
+        "nome": "Acordar",
+        "simbolo": "0",
+        "imagem": "assets/h3_p0.png"
+      },
+      {
+        "nome": "Tomar café",
+        "simbolo": "1",
+        "imagem": "assets/h3_p1.png"
+      },
+      {
+        "nome": "Tomar banho",
+        "simbolo": "2",
+        "imagem": "assets/h3_p2.png"
+      },
+      {
+        "nome": "Escovar os dentes",
+        "simbolo": "3",
+        "imagem": "assets/h3_p3.png"
+      },
+      {
+        "nome": "Vestir-se",
+        "simbolo": "4",
+        "imagem": "assets/h3_p4.png"
+      },
+      {
+        "nome": "Ir à escola",
+        "simbolo": "5",
+        "imagem": "assets/h3_p5.png"
+      }
+    ]
+  }
+}
