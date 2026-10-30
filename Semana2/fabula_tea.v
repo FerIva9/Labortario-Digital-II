@@ -12,6 +12,11 @@ module fabula_tea (
 
     output wire pwm,
     output wire saida_serial,
+    output wire acertou,
+    output wire errou,
+    output wire contando,
+    output wire recontando,
+    output wire relembrando,
     output wire [6:0] HEX0,
     output wire [6:0] HEX1,
     output wire [6:0] HEX2,
@@ -32,7 +37,6 @@ module fabula_tea (
     wire contaC, zeraC, registraR, zeraR, registraModo, escreve;
     wire leds_BM, contaExibicao, zeraExibicao;
     wire habilitaJogada, registraExibicao, registraHistoria;
-    wire acertou, errou, contando, recontando, relembrando;
     wire [2:0] selCaracter;
     wire [5:0] db_estado;
     wire [3:0] db_contagem;
@@ -95,14 +99,14 @@ module fabula_tea (
 
     // Apagar HEX0/HEX5 durante reset evita segmentos permanentemente em GND.
     hexa7seg_3bits display_historia (
-        .hexa({1'b0, db_historia}), .enable(~reset), .display(HEX0)
+        .hexa({1'b0, db_historia}), .enable(1'b1), .display(HEX0)
     );
     hexa7seg display_personagem(.hexa({1'b0, db_personagem}),     .display(HEX1));
     hexa7seg display_contagem  (.hexa(db_contagem),               .display(HEX2));
     hexa7seg display_situacao  (.hexa(situacao),                  .display(HEX3));
     hexa7seg display_estado_lo (.hexa(db_estado[3:0]),           .display(HEX4));
     hexa7seg_3bits display_estado_hi (
-        .hexa({1'b0, db_estado[5:4]}), .enable(~reset), .display(HEX5)
+        .hexa({1'b0, db_estado[5:4]}), .enable(1'b1), .display(HEX5)
     );
 
     assign db_rx_serial = entrada_serial;

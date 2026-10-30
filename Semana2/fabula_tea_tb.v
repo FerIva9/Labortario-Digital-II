@@ -8,6 +8,7 @@ module fabula_tea_tb;
     reg entrada_serial = 1;
     reg [1:0] escolhe_tamanho = 0, escolhe_historia = 2;
     wire pwm, saida_serial;
+    wire acertou, errou, contando, recontando, relembrando;
     wire [6:0] HEX0, HEX1, HEX2, HEX3, HEX4, HEX5;
     wire db_rx_serial, db_pronto_rx, db_jogada_feita, db_pwm;
     wire partida_serial, db_tx_serial, pronto_serial;
@@ -19,6 +20,8 @@ module fabula_tea_tb;
         .escolhe_tamanho(escolhe_tamanho),
         .escolhe_historia(escolhe_historia),
         .pwm(pwm), .saida_serial(saida_serial),
+        .acertou(acertou), .errou(errou), .contando(contando),
+        .recontando(recontando), .relembrando(relembrando),
         .HEX0(HEX0), .HEX1(HEX1), .HEX2(HEX2),
         .HEX3(HEX3), .HEX4(HEX4), .HEX5(HEX5),
         .db_rx_serial(db_rx_serial), .db_pronto_rx(db_pronto_rx),
@@ -86,8 +89,10 @@ module fabula_tea_tb;
     initial begin
         #1; reset = 0; #1; reset = 1;
         repeat (4) @(negedge clock);
-        verificar(HEX0 == 7'b1111111 && HEX5 == 7'b1111111,
-                  "HEX0 e HEX5 apagados durante reset");
+        verificar(HEX0 == 7'b1000000 && HEX5 == 7'b1000000,
+                  "HEX0 e HEX5 mostram zero durante reset");
+        verificar({acertou, errou, contando, recontando, relembrando} === 5'b00000,
+                  "indicadores apagados durante reset");
         reset = 0;
         @(negedge clock);
         verificar(HEX0 == 7'b1000000 && HEX1 == 7'b1000000 &&
@@ -102,6 +107,8 @@ module fabula_tea_tb;
         verificar(HEX0 == 7'b0100100 && HEX3 == 7'b1111001 &&
                   HEX4 == 7'b0110000 && HEX5 == 7'b1000000,
                   "historia 2, contando, estado 03");
+        verificar({acertou, errou, contando, recontando, relembrando} === 5'b00100,
+                  "saida contando ativa durante contagem");
 
         for (i=0; i<4; i=i+1) begin
             enviar_cartao(7'h33+i); // personagens 3, 4, 5, 6 (ultimo invalido)
@@ -125,7 +132,22 @@ module fabula_tea_tb;
                   HEX2 == 7'b1000000 && HEX3 == 7'b0100100 &&
                   HEX4 == 7'b0000010 && HEX5 == 7'b1111001,
                   "displays ao entrar em recontagem");
-        $display("PASS: top, seis displays, RX valido/invalido, TX e sinais de depuracao");
+        verificar({acertou, errou, contando, recontando, relembrando} === 5'b00010,
+                  "saida recontando ativa durante recontagem");
+
+        // Verifica a decodificacao das portas em todos os estados, inclusive
+        // os estados finais e de relembrar que esta sequencia nao alcanca.
+        for (i=0; i<64; i=i+1) begin
+            force dut.UC.Eatual = i;
+            #1;
+            verificar(contando === (i >= 2 && i <= 20) &&
+                      recontando === (i >= 21 && i <= 38) &&
+                      acertou === (i == 39) && errou === (i == 40) &&
+                      relembrando === (i >= 41 && i <= 59),
+                      "indicadores nao correspondem ao estado");
+        end
+        release dut.UC.Eatual;
+        $display("PASS: top, displays, RX, TX, depuracao e indicadores");
         $finish;
     end
     initial begin
