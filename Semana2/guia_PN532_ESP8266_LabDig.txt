@@ -1,0 +1,120 @@
+GUIA DE BANCADA — LEITURA DE CARTÃO RFID COM ESP8266 + PN532
+Computador do LabDig | Arduino IDE já instalado
+
+OBJETIVO
+Ler o UID de um cartão NFC/RFID ISO 14443A no Monitor Serial do Arduino IDE.
+
+MATERIAL
+- Placa DOIT ESP-12F (ESP8266, USB-serial CH340)
+- Módulo Elechouse NFC MODULE V3 (PN532)
+- Cartão compatível com ISO 14443A (por exemplo, MIFARE)
+- 4 jumpers e cabo USB de dados
+
+1) LIGAÇÕES — FAZER COM USB DESCONECTADO
+PN532       ESP8266 DOIT
+GND    -->  G (GND)
+VCC    -->  3V3 (NÃO 5V)
+SDA    -->  D2 (GPIO4)
+SCL    -->  D1 (GPIO5)
+
+Chaves de configuração do PN532 V3 para I2C:
+Chave 1 = ON; chave 2 = OFF.
+Depois de conferir tudo, conectar a ESP8266 ao USB do computador.
+
+2) PREPARAR O ARDUINO IDE NO COMPUTADOR DO LABDIG
+A. Conferir se o suporte ESP8266 já está instalado:
+   Ferramentas > Placa > Gerenciador de Placas; pesquisar "esp8266".
+   Se faltar, em Arquivo > Preferências, adicionar à lista de URLs de placas:
+   https://arduino.esp8266.com/stable/package_esp8266com_index.json
+   Em seguida instalar "esp8266 by ESP8266 Community".
+B. Selecionar a placa: Ferramentas > Placa > ESP8266 Boards >
+   NodeMCU 1.0 (ESP-12E Module) (compatível com esta DOIT ESP-12F).
+C. Instalar as bibliotecas Elechouse PN532 e PN532_I2C, se não existirem:
+   https://github.com/elechouse/PN532
+   Baixar ZIP e extrair; copiar as pastas PN532 e PN532_I2C para
+   a subpasta "libraries" do local de Sketchbook indicado em
+   Arquivo > Preferências. Reiniciar o Arduino IDE.
+D. Abrir Gerenciador de Dispositivos do Windows > Portas (COM e LPT).
+   Identificar "USB-SERIAL CH340 (COMx)" com a placa conectada.
+   No Arduino IDE: Ferramentas > Porta > escolher a COM correspondente.
+   A COM pode ser diferente da usada em casa.
+E. Ferramentas > Upload Speed: 115200.
+
+3) CÓDIGO — COPIAR PARA UM NOVO SKETCH
+
+#include <Wire.h>
+#include <PN532_I2C.h>
+#include <PN532.h>
+
+PN532_I2C pn532_i2c(Wire);
+PN532 nfc(pn532_i2c);
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  Wire.begin(4, 5); // SDA = D2 (GPIO4); SCL = D1 (GPIO5)
+  nfc.begin();
+
+  uint32_t versao = nfc.getFirmwareVersion();
+  if (!versao) {
+    Serial.println("ERRO: PN532 nao respondeu!");
+    while (true) { delay(1000); }
+  }
+
+  Serial.println("PN532 inicializado!");
+  nfc.SAMConfig();
+  Serial.println("Aproxime um cartao RFID...");
+}
+
+void loop() {
+  uint8_t uid[7];
+  uint8_t uidLength = 0;
+
+  bool encontrado = nfc.readPassiveTargetID(
+    PN532_MIFARE_ISO14443A, uid, &uidLength
+  );
+
+  if (encontrado) {
+    Serial.println("Cartao detectado!");
+    Serial.print("UID: ");
+    for (uint8_t i = 0; i < uidLength; i++) {
+      if (uid[i] < 0x10) Serial.print("0");
+      Serial.print(uid[i], HEX);
+      Serial.print(" ");
+    }
+    Serial.println();
+    Serial.println("------------------");
+    delay(1000);
+  }
+}
+
+4) EXECUÇÃO
+A. Com o PN532 conectado corretamente, clicar em Carregar (seta ->).
+B. Abrir Ferramentas > Monitor Serial e configurar 115200 baud.
+C. Aproximar um cartão da antena do PN532.
+D. Saída esperada (UID de EXEMPLO):
+   PN532 inicializado!
+   Aproxime um cartao RFID...
+   Cartao detectado!
+   UID: 04 A2 B7 3C 91
+   ------------------
+E. É normal a leitura aguardar um cartão. O UID real será diferente.
+
+5) SE NÃO FUNCIONAR
+- Erro de compilação envolvendo PN532_I2C.h: confirmar bibliotecas instaladas.
+- Nenhuma porta COM: testar cabo de DADOS, USB, Gerenciador de Dispositivos
+  e driver CH340; instalações de driver no LabDig podem requerer suporte de TI.
+- "Cannot configure port"/PermissionError(13): problema de acesso/driver
+  USB-serial, não do código PN532. Fechar Monitor Serial e outros aplicativos
+  que usam a COM. Confirmar porta. NÃO modificar drivers de PC do laboratório
+  sem autorização. Em computador pessoal, uma versão CH340 antiga funcionou.
+- "ERRO: PN532 nao respondeu!": conferir 3V3/GND, SDA=D2, SCL=D1,
+  chaves I2C e fios. O scanner I2C deve localizar o endereço 0x24.
+- Leitor responde, mas não detecta cartão: conferir compatibilidade 13,56 MHz
+  ISO 14443A e aproximar o cartão corretamente. Cartões só de tarja magnética
+  ou RFID 125 kHz não são lidos por este experimento.
+
+OBSERVAÇÃO
+Não é necessário conectar a FPGA nem o módulo RX/TX neste teste.
+Não usar 5 V diretamente nos GPIOs do ESP8266.
