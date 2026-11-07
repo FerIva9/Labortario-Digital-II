@@ -21,7 +21,6 @@
 
 module fluxo_dados (
     // ENTRADAS:
-    input [1:0] escolhe_tamanho,
     input registraModo, // sinal que permite o registro do modo de jogo
     input clock, // sinal de clock
     input reset, // reset geral das interfaces e dos novos registradores
@@ -41,6 +40,13 @@ module fluxo_dados (
     input zeraExibicao,  // sinal que zera o contador do timer
     input seletorLedsBM, // 0: jogada registrada; 1: personagem da RAM
 
+    // ENTRADAS DE TECLADO
+    input [3:0] tecla,
+    input tecla_valida,
+    input registraDezena,
+    input registraUnidade,
+    input zeraDigitos,
+
 
     // SAÍDAS
 
@@ -53,12 +59,16 @@ module fluxo_dados (
     output saida_serial,
     output pronto_serial, // fim de UM caractere, nao da mensagem inteira
 
+    // SAÍDAS DE TECLADO
+    output digito_valido,
+    output tamanho_valido,
+
 
     // SINAIS DE DEPURAÇÃO
 
     output [3:0] db_contagem,
     output [5:0] db_memoria,
-    output [1:0] db_tamanhohistoria,
+    output [3:0] db_tamanhohistoria,
     output [1:0] db_historia, // historia registrada para HEX0
     output [2:0] db_personagem, // posicao apresentada para HEX1
     output db_pronto_rx // conclusao de um caractere recebido
@@ -69,7 +79,11 @@ module fluxo_dados (
     // Fios de conexão 
 
     wire [3:0] modoMux_w;
-    wire [1:0] modoReg_w;
+    wire [3:0] dezena_w;
+    wire [3:0] unidade_w;
+    wire [3:0] limite_w;
+    wire [3:0] modoReg_w;
+    wire clearDigitos_w;
     wire [3:0] contador_w;
     wire [5:0] registrador_w;
     wire [5:0] memoriaData_w;
@@ -127,22 +141,53 @@ module fluxo_dados (
         .D(recebeJogada_w), .Q(jogada_feita)
     );
 
-    mux4x1 muxModo (
-        .D0 (4'b0011),
-        .D1 (4'b0111),
-        .D2 (4'b1011),
-        .D3 (4'b1111),
-        .SEL (modoReg_w),
-        .OUT (modoMux_w)
+    
+    // --------------------------------------------------
+    // Selecao do tamanho da historia pelo teclado
+    // --------------------------------------------------
+
+    // Apenas teclas numericas (0 a 9) sao validas.
+    assign digito_valido = tecla_valida && (tecla <= 4'd9);
+
+    assign clearDigitos_w = reset | zeraDigitos;
+
+    // Primeiro digito
+    registrador_n #(.N(4)) RegDezena (
+        .clock(clock),
+        .clear(clearDigitos_w),
+        .enable(registraDezena),
+        .D(tecla),
+        .Q(dezena_w)
     );
 
-    registrador_2 RegModo (
+    // Segundo digito
+    registrador_n #(.N(4)) RegUnidade (
         .clock(clock),
-        .clear(1'b0),
+        .clear(clearDigitos_w),
+        .enable(registraUnidade),
+        .D(tecla),
+        .Q(unidade_w)
+    );
+
+    // Converte os dois digitos para o limite de contagem
+    conversor_tamanho ConversorTamanho (
+        .dezena(dezena_w),
+        .unidade(unidade_w),
+        .limite(limite_w),
+        .tamanho_valido(tamanho_valido)
+    );
+
+    // Registra o limite escolhido para a historia
+    registrador_n #(.N(4)) RegModo (
+        .clock(clock),
+        .clear(reset),
         .enable(registraModo),
-        .D(escolhe_tamanho),
+        .D(limite_w),
         .Q(modoReg_w)
     );
+
+    assign modoMux_w = modoReg_w;
+
 
     mux2x1 muxLed (
         .D0 (registrador_w),
@@ -257,7 +302,8 @@ module fluxo_dados (
         .pronto(pronto_serial), .db_partida(), .db_saida_serial(), .db_estado()
     );
 
-    // A UC continua inicializando o nucleo por zeraC, zeraR e registraModo.
+    // A UC inicializa o nucleo por zeraC e zeraR.
+    // registraModo armazena o tamanho escolhido pelo teclado.
     // Respeitar um ciclo apos registraR antes de escrever/apresentar, e a
     // leitura sincronizada da RAM apos alterar seu endereco.
     // ASSIGNS DE DEPURAÇÃO
