@@ -28,6 +28,19 @@ const Cartao cartoes[] = {
 
 const int totalCartoes = sizeof(cartoes) / sizeof(cartoes[0]);
 
+// Para implementação da máquina de estados
+
+enum EstadoLeitor {
+  AGUARDANDO_CARTAO,
+  AGUARDANDO_RETIRADA
+};
+
+EstadoLeitor estado = AGUARDANDO_CARTAO;
+
+const int LIMITE_AUSENCIAS = 3;
+int ausenciasConsecutivas = 0;
+
+
 void setup() {
   Serial.begin(115200);
 
@@ -44,6 +57,8 @@ void setup() {
 
   nfc.SAMConfig();
 
+  nfc.setPassiveActivationRetries(0x05);
+
   // UART1: TX no D4, 115200 baud, 7E1
   Serial1.begin(115200, SERIAL_7E1);
 
@@ -54,10 +69,40 @@ void loop() {
   uint8_t uid[7];
   uint8_t tamanho = 0;
 
-  if (!nfc.readPassiveTargetID(
-        PN532_MIFARE_ISO14443A, uid, &tamanho)) {
+  bool detectado = nfc.readPassiveTargetID(
+    PN532_MIFARE_ISO14443A,
+    uid,
+    &tamanho,
+    200
+  );
+
+  // Nenhum cartao detectado
+  if (!detectado) {
+    if (estado == AGUARDANDO_RETIRADA) {
+      ausenciasConsecutivas++;
+
+      if (ausenciasConsecutivas >= LIMITE_AUSENCIAS) {
+        estado = AGUARDANDO_CARTAO;
+        ausenciasConsecutivas = 0;
+
+        Serial.println("Cartao retirado!");
+      }
+    }
+
     return;
   }
+
+  // Cartao presente: zera as ausencias
+  ausenciasConsecutivas = 0;
+
+  // Ja processamos um cartao.
+  // Nao enviar novamente enquanto estiver presente.
+  if (estado == AGUARDANDO_RETIRADA) {
+    return;
+  }
+
+  // Novo cartao detectado
+  estado = AGUARDANDO_RETIRADA;
 
   if (tamanho != 4) return;
 
@@ -71,11 +116,9 @@ void loop() {
 
       Serial1.write(numero);
 
-      delay(1000);
       return;
     }
   }
 
   Serial.println("Cartao desconhecido!");
-  delay(1000);
 }
