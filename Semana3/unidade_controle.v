@@ -139,6 +139,16 @@ module unidade_controle (
             Eatual <= Eprox;
     end
 
+    // Permanencia do tamanho configurado. 
+    // Se o usuario escolher um tamanho valido, a flag tamanho_configurado sera setada. 
+    // Se o usuario resetar o sistema, a flag sera resetada.
+    always @(posedge clock or posedge reset) begin
+        if (reset)
+            tamanho_configurado <= 1'b0;
+        else if (Eatual == confirma_tamanho)
+            tamanho_configurado <= 1'b1;
+    end
+
 
     // Transicoes de estados
     always @(*) begin
