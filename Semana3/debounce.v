@@ -13,7 +13,7 @@
 //
 
 module debounce #(
-    parameter DELAY = 20 // para clock de 1kHz
+    parameter DELAY = 1_000_000 // para clock de 50 MHz, 1_000_000 equivale a 20 ms
 )(
     input  wire clk,
     input  wire button_in,
