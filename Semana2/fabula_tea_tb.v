@@ -109,6 +109,8 @@ module fabula_tea_tb;
                   "historia 2, contando, estado 03");
         verificar({acertou, errou, contando, recontando, relembrando} === 5'b00100,
                   "saida contando ativa durante contagem");
+        $display("CONTAGEM: contando=%b recontando=%b relembrando=%b",
+                 contando, recontando, relembrando);
 
         for (i=0; i<4; i=i+1) begin
             enviar_cartao(7'h33+i); // personagens 3, 4, 5, 6 (ultimo invalido)
@@ -134,6 +136,8 @@ module fabula_tea_tb;
                   "displays ao entrar em recontagem");
         verificar({acertou, errou, contando, recontando, relembrando} === 5'b00010,
                   "saida recontando ativa durante recontagem");
+        $display("RECONTAGEM: contando=%b recontando=%b relembrando=%b",
+                 contando, recontando, relembrando);
 
         // Verifica a decodificacao das portas em todos os estados, inclusive
         // os estados finais e de relembrar que esta sequencia nao alcanca.
@@ -145,6 +149,9 @@ module fabula_tea_tb;
                       acertou === (i == 39) && errou === (i == 40) &&
                       relembrando === (i >= 41 && i <= 59),
                       "indicadores nao correspondem ao estado");
+            if (i == 41)
+                $display("RELEMBRAR (estado forcado): contando=%b recontando=%b relembrando=%b",
+                         contando, recontando, relembrando);
         end
         release dut.UC.Eatual;
         $display("PASS: top, displays, RX, TX, depuracao e indicadores");
