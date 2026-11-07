@@ -41,8 +41,7 @@ module fluxo_dados (
     input seletorLedsBM, // 0: jogada registrada; 1: personagem da RAM
 
     // ENTRADAS DE TECLADO
-    input [3:0] tecla,
-    input tecla_valida,
+    input [3:0] C,
     input registraDezena,
     input registraUnidade,
     input zeraDigitos,
@@ -62,6 +61,7 @@ module fluxo_dados (
     // SAÍDAS DE TECLADO
     output digito_valido,
     output tamanho_valido,
+    output [3:0] L,
 
 
     // SINAIS DE DEPURAÇÃO
@@ -104,12 +104,23 @@ module fluxo_dados (
     wire personagem_valido_w, carregaExibicao_w;
     wire [1:0] historia_w;
     wire [6:0] historia_ascii_w, personagem_ascii_w, dados_ascii_tx_w;
+    wire [3:0] tecla;
+    wire tecla_valida;
 
 
 
 
     // COMPONENTES:
-    
+
+
+    interface_teclado InterfaceTeclado (
+        .clock(clock),
+        .reset(reset),
+        .C(C),
+        .L(L),
+        .tecla(tecla),
+        .tecla_valida(tecla_valida)
+    );
     rx_serial_7E1 RX_SERIAL (
         .clock(clock), .reset(reset), .RX(entrada_serial),
         .pronto(pronto_rx_w), .dados_ascii(dados_ascii_rx_w),
