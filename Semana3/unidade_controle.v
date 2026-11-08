@@ -51,6 +51,7 @@ module unidade_controle (
     output reg habilitaJogada,
     output reg registraExibicao,
     output reg registraHistoria,
+    output reg resultado_jogada,
     output reg partida_serial,
     output reg selecionando_tamanho,
     output reg registraDezena,
@@ -127,6 +128,13 @@ module unidade_controle (
     localparam [6:0] registra_unidade                       = 7'd64;
     localparam [6:0] confirma_tamanho                       = 7'd65;
     localparam [6:0] verifica_tamanho                       = 7'd66;
+    localparam [6:0] transmite_R_resultado                  = 7'd67;
+    localparam [6:0] espera_R_resultado                     = 7'd68;
+    localparam [6:0] transmite_valor_resultado              = 7'd69;
+    localparam [6:0] espera_valor_resultado                 = 7'd70;
+    localparam [6:0] transmite_LF_resultado                 = 7'd71;
+    localparam [6:0] espera_LF_resultado                    = 7'd72;
+    localparam [6:0] finaliza_comparacao                    = 7'd73;
 
     reg [6:0] Eatual, Eprox;
     reg tamanho_configurado;
@@ -147,6 +155,14 @@ module unidade_controle (
             tamanho_configurado <= 1'b0;
         else if (Eatual == confirma_tamanho)
             tamanho_configurado <= 1'b1;
+    end
+
+    // Retem o resultado de cada comparacao durante toda a mensagem serial.
+    always @(posedge clock or posedge reset) begin
+        if (reset)
+            resultado_jogada <= 1'b0;
+        else if (Eatual == compara_jogada)
+            resultado_jogada <= igual;
     end
 
 
@@ -273,7 +289,19 @@ module unidade_controle (
                 Eprox = (pronto_serial) ? compara_jogada : espera_LF_recontagem;
 
             compara_jogada:
-                Eprox = (!igual) ? fim_errou :
+                Eprox = transmite_R_resultado;
+
+            transmite_R_resultado: Eprox = espera_R_resultado;
+            espera_R_resultado:
+                Eprox = pronto_serial ? transmite_valor_resultado : espera_R_resultado;
+            transmite_valor_resultado: Eprox = espera_valor_resultado;
+            espera_valor_resultado:
+                Eprox = pronto_serial ? transmite_LF_resultado : espera_valor_resultado;
+            transmite_LF_resultado: Eprox = espera_LF_resultado;
+            espera_LF_resultado:
+                Eprox = pronto_serial ? finaliza_comparacao : espera_LF_resultado;
+            finaliza_comparacao:
+                Eprox = (!resultado_jogada) ? fim_errou :
                         ((fimHistoria) ? fim_acertou : proxima_jogada_recontagem);
 
             proxima_jogada_recontagem:
@@ -620,6 +648,28 @@ module unidade_controle (
 
             compara_jogada: begin
                 recontando = 1'b1;
+            end
+
+            transmite_R_resultado, transmite_valor_resultado,
+            transmite_LF_resultado: begin
+                recontando = 1'b1;
+                partida_serial = 1'b1;
+                case (Eatual)
+                    transmite_R_resultado:     selCaracter = 3'b110;
+                    transmite_valor_resultado: selCaracter = 3'b111;
+                    transmite_LF_resultado:    selCaracter = 3'b101;
+                endcase
+            end
+
+            espera_R_resultado, espera_valor_resultado,
+            espera_LF_resultado, finaliza_comparacao: begin
+                recontando = 1'b1;
+                case (Eatual)
+                    espera_R_resultado:     selCaracter = 3'b110;
+                    espera_valor_resultado: selCaracter = 3'b111;
+                    espera_LF_resultado:    selCaracter = 3'b101;
+                    default:                selCaracter = 3'b000;
+                endcase
             end
 
             proxima_jogada_recontagem: begin
