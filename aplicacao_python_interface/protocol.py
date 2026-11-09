@@ -1,4 +1,4 @@
-"""Protocolo ASCII emitido por Semana1/fluxo_dados.v."""
+"""Protocolo ASCII emitido por Semana3/fluxo_dados.v."""
 from dataclasses import dataclass
 import re
 
@@ -9,10 +9,18 @@ class Event:
     character: int
 
 
-def parse_line(data: bytes) -> Event:
+@dataclass(frozen=True)
+class Result:
+    correct: bool
+
+
+def parse_line(data: bytes) -> Event | Result:
+    result = re.fullmatch(rb"R([01])\r?\n", data)
+    if result:
+        return Result(result[1] == b'1')
     match = re.fullmatch(rb"H([0-3]),P([0-5])\r?\n", data)
     if match is None:
-        raise ValueError(f"Mensagem inválida: {data!r}. Esperado H0,P0 + LF.")
+        raise ValueError(f"Mensagem inválida: {data!r}. Esperado H0,P0 ou R0/R1 + LF.")
     return Event(int(match[1]), int(match[2]))
 
 
