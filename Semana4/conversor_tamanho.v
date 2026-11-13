@@ -1,8 +1,8 @@
 module conversor_tamanho (
-    input  wire [3:0] dezena,
-    input  wire [3:0] unidade,
+    input wire [3:0] dezena,
+    input wire [3:0] unidade,
 
-    output reg  [3:0] limite,
+    output reg [6:0] limite,
     output wire tamanho_valido
 );
 
@@ -10,16 +10,17 @@ module conversor_tamanho (
 
     assign tamanho_decimal = dezena * 7'd10 + unidade;
 
-    // Nao permitimos historia com zero personagens.
-    assign tamanho_valido = (tamanho_decimal != 7'd0);
+    assign tamanho_valido =
+        (dezena <= 4'd9) &&
+        (unidade <= 4'd9) &&
+        (tamanho_decimal >= 7'd1) &&
+        (tamanho_decimal <= 7'd99);
 
     always @(*) begin
-        if (tamanho_decimal == 7'd0)
-            limite = 4'd0;
-        else if (tamanho_decimal >= 7'd16)
-            limite = 4'd15;
-        else
+        if (tamanho_valido)
             limite = tamanho_decimal - 7'd1;
+        else
+            limite = 7'd0;
     end
 
 endmodule

@@ -66,9 +66,9 @@ module fluxo_dados (
 
     // SINAIS DE DEPURAÇÃO
 
-    output [3:0] db_contagem,
+    output [6:0] db_contagem,
     output [5:0] db_memoria,
-    output [3:0] db_tamanhohistoria,
+    output [6:0] db_tamanhohistoria,
     output [1:0] db_historia, // historia registrada para HEX0
     output [2:0] db_personagem, // posicao apresentada para HEX1
     output db_pronto_rx // conclusao de um caractere recebido
@@ -78,13 +78,13 @@ module fluxo_dados (
 
     // Fios de conexão 
 
-    wire [3:0] modoMux_w;
+    wire [6:0] modoMux_w;
     wire [3:0] dezena_w;
     wire [3:0] unidade_w;
-    wire [3:0] limite_w;
-    wire [3:0] modoReg_w;
+    wire [6:0] limite_w;
+    wire [6:0] modoReg_w;
     wire clearDigitos_w;
-    wire [3:0] contador_w;
+    wire [6:0] contador_w;
     wire [5:0] registrador_w;
     wire [5:0] memoriaData_w;
     wire [5:0] muxDecoder_w;
@@ -94,7 +94,6 @@ module fluxo_dados (
     wire AGBoL_w;
     wire [26:0] Q_wire_exibicao;
     wire meio_wire_exibicao;
-    wire fimC;
     wire [6:0] dados_ascii_rx_w;
     wire pronto_rx_w, paridade_par_rx_w, caractere_valido_w;
     wire [5:0] jogada_decodificada_w, jogada_rx_w;
@@ -189,7 +188,7 @@ module fluxo_dados (
     );
 
     // Registra o limite escolhido para a historia
-    registrador_n #(.N(4)) RegModo (
+    registrador_n #(.N(7)) RegModo (
         .clock(clock),
         .clear(reset),
         .enable(registraModo),
@@ -218,7 +217,7 @@ module fluxo_dados (
         .AEBo (igual)
     );
 
-    comparador_85 comparadorHistoria ( 
+    comparador_7bits comparadorHistoria ( 
         .ALBi (1'h0), 
         .AGBi (1'h0), 
         .AEBi (1'h1), 
@@ -229,16 +228,17 @@ module fluxo_dados (
         .AEBo (fimHistoria)
     );
 
-    contador_163 contadorJ (
-        .clock (clock), 
-        .clr (~zeraC), 
-        .ld (1'h1), 
-        .ent (1'h1), 
-        .enp (contaC),
-        .D (4'h0),
-        .Q (contador_w),
-        .rco (fimC)  
+
+    contador_m #(.M(128), .N(7)) contadorJ (
+        .clock(clock),
+        .zera_as(reset),
+        .zera_s(zeraC),
+        .conta(contaC),
+        .Q(contador_w),
+        .fim(),
+        .meio()
     );
+
 
     registrador_6 registradorBotoes (
         .clock (clock),
@@ -248,13 +248,17 @@ module fluxo_dados (
         .Q (registrador_w)
     );
 
-    sync_ram_16x6_file #(.BINFILE("ram_init.txt")) MemJog (
-        .clk  (clock),  
-        .we   (escreve),  
-        .data (registrador_w),
-        .addr (contador_w),
-        .q    (memoriaData_w)   
+
+    sync_ram_128x6_file #(
+        .BINFILE("ram_init.txt")
+    ) MemJog (
+        .clk(clock),
+        .we(escreve),
+        .data(registrador_w),
+        .addr(contador_w),
+        .q(memoriaData_w)
     );
+
 
     // Dois segundos a 50 MHz. A UC zera o timer a cada apresentacao.
     contador_m #(.M(100_000_000), .N(27)) timerExibicao (

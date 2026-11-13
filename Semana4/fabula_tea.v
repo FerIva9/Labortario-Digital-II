@@ -87,8 +87,8 @@ module fabula_tea (
     // --------------------------------------------------
 
     wire [6:0] db_estado;
-    wire [3:0] db_contagem;
-    wire [3:0] db_tamanhohistoria;
+    wire [6:0] db_contagem;
+    wire [6:0] db_tamanhohistoria;
     wire [2:0] db_personagem;
     wire [1:0] db_historia;
     wire [3:0] situacao;
@@ -254,7 +254,7 @@ module fabula_tea (
 
     // HEX2: endereco da RAM
     hexa7seg display_contagem (
-        .hexa(db_contagem),
+        .hexa(db_contagem[3:0]),
         .display(HEX2)
     );
 
