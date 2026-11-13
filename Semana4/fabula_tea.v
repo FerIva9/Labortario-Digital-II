@@ -36,6 +36,9 @@ module fabula_tea (
     output wire [6:0] HEX4,
     output wire [6:0] HEX5,
 
+    output wire [6:0] display_dezena,
+    output wire [6:0] display_unidade,
+
     // Depuracao
     output wire db_rx_serial,
     output wire db_pronto_rx,
@@ -92,6 +95,14 @@ module fabula_tea (
     wire [2:0] db_personagem;
     wire [1:0] db_historia;
     wire [3:0] situacao;
+
+    // Controle dos displays externos
+    wire [7:0] tamanho_real;
+    wire [3:0] dezena_bcd;
+    wire [3:0] unidade_bcd;
+    wire habilita_displays;
+
+    reg tamanho_configurado_display;
 
     // --------------------------------------------------
     // Sinais dos botoes apos debounce
@@ -280,6 +291,50 @@ module fabula_tea (
                       relembrando         ? 4'd3 :
                       recontando          ? 4'd2 :
                       contando            ? 4'd1 : 4'd0;
+
+
+    // --------------------------------------------------
+    // Conversao do tamanho da historia para BCD
+    // --------------------------------------------------
+
+    // RegModo armazena tamanho - 1
+    assign tamanho_real = {1'b0, db_tamanhohistoria} + 8'd1;
+
+    // Separacao em dezena e unidade
+    assign dezena_bcd = tamanho_real / 8'd10;
+    assign unidade_bcd = tamanho_real % 8'd10;
+
+
+    // --------------------------------------------------
+    // Habilitacao dos displays externos
+    // --------------------------------------------------
+
+    always @(posedge clock or posedge reset_db) begin
+        if (reset_db)
+            tamanho_configurado_display <= 1'b0;
+        else if (registraModo)
+            tamanho_configurado_display <= 1'b1;
+    end
+
+    assign habilita_displays =
+        tamanho_configurado_display && !selecionando_tamanho;
+
+
+    // --------------------------------------------------
+    // Displays externos de sete segmentos
+    // --------------------------------------------------
+
+    encoder_display_externo encoder_dezena (
+        .digito(dezena_bcd),
+        .enable(habilita_displays),
+        .segmentos(display_dezena)
+    );
+
+    encoder_display_externo encoder_unidade (
+        .digito(unidade_bcd),
+        .enable(habilita_displays),
+        .segmentos(display_unidade)
+    );
 
     // --------------------------------------------------
     // Displays de sete segmentos
