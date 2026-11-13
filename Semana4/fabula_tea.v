@@ -94,18 +94,64 @@ module fabula_tea (
     wire [3:0] situacao;
 
     // --------------------------------------------------
+    // Sinais dos botoes apos debounce
+    // --------------------------------------------------
+
+    wire reset_db;
+    wire contar_db;
+    wire recontar_db;
+    wire relembrar_db;
+    wire escolhe_tamanho_db;
+
+
+    // --------------------------------------------------
+    // Debounce dos botoes - clock de 50 MHz
+    // --------------------------------------------------
+
+    debounce #(.DELAY(1_000_000)) db_reset (
+        .clk(clock),
+        .button_in(reset),
+        .button_out(reset_db)
+    );
+
+    debounce #(.DELAY(1_000_000)) db_contar (
+        .clk(clock),
+        .button_in(contar),
+        .button_out(contar_db)
+    );
+
+    debounce #(.DELAY(1_000_000)) db_recontar (
+        .clk(clock),
+        .button_in(recontar),
+        .button_out(recontar_db)
+    );
+
+    debounce #(.DELAY(1_000_000)) db_relembrar (
+        .clk(clock),
+        .button_in(relembrar),
+        .button_out(relembrar_db)
+    );
+
+    debounce #(.DELAY(1_000_000)) db_escolhe_tamanho (
+        .clk(clock),
+        .button_in(escolhe_tamanho),
+        .button_out(escolhe_tamanho_db)
+    );
+
+
+    // --------------------------------------------------
     // Unidade de controle
     // --------------------------------------------------
 
     unidade_controle UC (
         .clock(clock),
-        .reset(reset),
+        .reset(reset_db),
 
         // Comandos do jogador
-        .contar(contar),
-        .recontar(recontar),
-        .relembrar(relembrar),
-        .escolhe_tamanho(escolhe_tamanho),
+        .contar(contar_db),
+        .recontar(recontar_db),
+        .relembrar(relembrar_db),
+        .escolhe_tamanho(escolhe_tamanho_db),
 
         // Condicoes vindas do FD
         .fimHistoria(fimHistoria),
@@ -159,7 +205,7 @@ module fabula_tea (
 
     fluxo_dados FD (
         .clock(clock),
-        .reset(reset),
+        .reset(reset_db),
 
         // UART de entrada
         .entrada_serial(entrada_serial),
