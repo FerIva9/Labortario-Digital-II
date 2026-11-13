@@ -1,6 +1,6 @@
 # Fábula TEA + — interface Python
 
-Aplicação desktop Tkinter para mostrar no monitor o personagem recebido da FPGA. O circuito não foi alterado.
+Aplicação desktop Tkinter para mostrar no monitor o personagem recebido da FPGA. Compatível com o protocolo da Semana3.
 
 ## Execução
 
@@ -28,14 +28,16 @@ A aplicação somente recebe dados; não envia comandos. A entrada serial da ESP
 
 ## Protocolo
 
-Confirmado em `../Semana1/fluxo_dados.v`, `tx_serial_7E1.v` e `codificadorPersonagem.v`:
+Confirmado em `../Semana3/fluxo_dados.v`, `tx_serial_7E1.v` e `codificadorPersonagem.v`:
 
 - **115200 baud, 7 bits, paridade par, 1 stop bit (7E1)**; sem controle de fluxo.
 - ASCII `H<história>,P<personagem>` seguido por LF (`0x0A`). Exemplo: `H0,P2\n` = seis bytes hexadecimais `48 30 2C 50 32 0A`.
 - História `0..3`; personagem `0..5`, correspondendo aos bits `000001` até `100000` e posições do servo de 15° até 165°.
 - Aceita também CRLF. Reagrupa leituras parciais e processa mensagens consecutivas. Informa quadros inválidos no status; quadros acima de 64 bytes são descartados até LF.
 
-O protocolo não informa fase, início/fim da rodada, acerto ou erro. Contagem, recontagem e relembrar usam o mesmo formato. Todas as ocorrências são apresentadas, inclusive repetições; o histórico não representa automaticamente a sequência original do jogo.
+Na recontagem, cada `H<história>,P<personagem>\n` é seguido por `R1\n` (acerto) ou `R0\n` (erro). O resultado corresponde à comparação daquela jogada, não ao resultado final da história. A interface mostra o cartão imediatamente e associa o próximo resultado à apresentação serial mais recente, uma única vez. Mensagens inválidas ou desconexão desfazem a associação pendente; resultados sem apresentação são ignorados com aviso. Repetições válidas são jogadas distintas. O protocolo não tem identificadores de jogada, portanto uma perda de quadros completos não pode ser detectada com segurança.
+
+Apresentações sem resultado continuam disponíveis, mas não entram nas taxas de acerto. O protocolo não informa início/fim de rodada; a aplicação não calcula histórias concluídas nem duração de rodadas.
 
 ## Cartões e imagens
 
@@ -106,3 +108,22 @@ A janela inicial se ajusta ao tamanho da tela, usa Segoe UI no Windows e permite
 `windows.manifest` declara a escala de DPI do sistema para o executável; ao rodar o código diretamente, `windows_display.py` configura isso antes de criar a janela. Não é necessário reduzir a escala do Windows para usar o aplicativo. A escala é a do sistema no início da execução; mudanças de escala durante o uso podem exigir reiniciar o aplicativo. Inclua `ui_layout.py`, `windows_display.py` e `windows.manifest` ao copiar o código para recompilar no Windows.
 
 Verificação gráfica opcional: `python tools/check_layout.py`. O script abre janelas temporárias para conferir três tamanhos (1240×900, 1024×650 e 800×600) em quatro escalas de fontes, incluindo galeria, limites dos controles, redimensionamento e apresentação de novos personagens em tela cheia. Esses testes foram executados em Linux; a conferência visual final no Windows continua necessária.
+
+## Jogadores e acompanhamento
+
+1. Na tela inicial, escolha um jogador na lista ou clique em **+ Novo jogador**, preencha o nome/apelido e clique em **Salvar**. Use a busca para localizar perfis. Os perfis possuem identificadores próprios, inclusive quando os nomes coincidem.
+2. Confira o perfil selecionado e clique em **Iniciar sessão** para abrir a interface do jogo. Cadastrar ou selecionar um jogador não inicia a sessão automaticamente. O nome ativo e o horário de início aparecem na lateral. Sessões são agrupamentos manuais da aplicação, não rodadas detectadas no circuito.
+3. Clique em **Ver desempenho do jogador** para consultar a taxa global, acertos/erros, sessão atual e evolução por tema, data e sessão. A taxa é `acertos / jogadas com R0 ou R1`; demonstrações e apresentações sem resultado ficam fora do cálculo. As datas preservam o horário local e fuso registrados.
+4. Use **Exportar histórico do jogador (CSV)** para obter todas as apresentações reais do perfil, com sessão, horário, história, personagem e resultado (`0`, `1` ou vazio quando não recebido).
+
+Use **Encerrar sessão / trocar jogador** para voltar à tela inicial. A aplicação desconecta a placa, preserva o histórico salvo e limpa os cartões e registros visuais da sessão anterior. Escolha um perfil e clique em **Iniciar sessão** para outro atendimento. A tela inicial é uma seleção de perfis locais, sem senha. Perfis e jogadas ficam em `registros/jogadores.sqlite3`, ou `%LOCALAPPDATA%\FabulaTEA\registros\jogadores.sqlite3` no executável Windows. Faça backup desse arquivo com o aplicativo fechado. Os dados ficam locais, sem envio a um servidor. Prefira apelidos quando apropriado.
+
+**Limpar histórico visual** não remove os dados do jogador. Os CSVs antigos de apresentações são preservados; como não contêm jogador nem resultado, não são importados automaticamente nas estatísticas. Os novos resultados persistem no SQLite e na exportação por jogador; os CSVs de sessão anteriores continuam como registros de apresentações. As estatísticas descrevem o desempenho no jogo e não representam uma avaliação clínica.
+
+Para distribuir as alterações no Windows, gere novamente o executável conforme as instruções acima; o módulo `player_store.py` também deve acompanhar o código fonte.
+
+### Gerenciar perfis
+
+Selecione um jogador e abra **Opções do perfil** para **Renomear** ou **Excluir perfil…**. O formulário de nome aparece somente durante o cadastro ou edição; **Cancelar** o recolhe. Renomear mantém o identificador, as sessões e todas as estatísticas do jogador. Nomes iguais recebem um identificador curto na lista para distinguir os perfis.
+
+Excluir exige confirmação e remove o perfil, suas sessões e jogadas do banco local, sem afetar outros jogadores. A exclusão não pode ser desfeita. Arquivos CSV já exportados e os antigos registros independentes de apresentações não são apagados. O gerenciamento fica na tela inicial, fora de uma sessão ativa.

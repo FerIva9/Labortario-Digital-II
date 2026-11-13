@@ -30,6 +30,7 @@ module fluxo_dados (
     input habilitaJogada,
     input registraExibicao,
     input [2:0] selCaracter,
+    input resultado_jogada,
     input partida_serial,
     input zeraC, // sinal que zera contador de jogadas
     input contaC, // sinal que conta no contador de jogadas
@@ -296,14 +297,14 @@ module fluxo_dados (
     assign personagem_ascii_w = {4'b0110, posicao_w};
     assign historia_ascii_w = {5'b01100, historia_w};
 
-    // Mensagem: H<historia>,P<personagem> seguida de LF.
+    // Mensagens: H<historia>,P<personagem> e R<resultado>, seguidas de LF.
     // A UC percorre 0..5, pulsa partida_serial e aguarda pronto_serial
     // para cada caractere. Deve manter RegHistoria e RegExibicao estaveis
     // durante toda a mensagem, inclusive ao apresentar personagens iguais.
     mux_8x1_n #(.BITS(7)) muxCaracter (
         .D0(7'h48), .D1(historia_ascii_w), .D2(7'h2C),
         .D3(7'h50), .D4(personagem_ascii_w), .D5(7'h0A),
-        .D6(7'h00), .D7(7'h00), .SEL(selCaracter),
+        .D6(7'h52), .D7({6'b011000, resultado_jogada}), .SEL(selCaracter),
         .MUX_OUT(dados_ascii_tx_w)
     );
 

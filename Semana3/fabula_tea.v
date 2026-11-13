@@ -70,6 +70,7 @@ module fabula_tea (
     wire registraHistoria;
 
     wire [2:0] selCaracter;
+    wire resultado_jogada;
 
     // --------------------------------------------------
     // Fios de controle da selecao de tamanho
@@ -147,6 +148,7 @@ module fabula_tea (
 
         // Controle UART
         .selCaracter(selCaracter),
+        .resultado_jogada(resultado_jogada),
         .partida_serial(partida_serial),
 
         // Depuracao
@@ -201,6 +203,7 @@ module fabula_tea (
 
         // UART de saida
         .selCaracter(selCaracter),
+        .resultado_jogada(resultado_jogada),
         .partida_serial(partida_serial),
 
         // Saidas principais
