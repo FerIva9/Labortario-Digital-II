@@ -1,6 +1,6 @@
-
 module interface_teclado #(
-    parameter DEBOUNCE_DELAY = 1_000_000
+    parameter DEBOUNCE_DELAY = 1_000_000,
+    parameter SCAN_LINE_CYCLES = 12_500
 )(
     input wire clock,
     input wire reset,
@@ -11,43 +11,45 @@ module interface_teclado #(
     output reg tecla_valida
 );
 
-    // -------------------------------------------------------
-    // Estados da interface
-    // -------------------------------------------------------
+    // Clock esperado: 50 MHz
+    // Cada linha: 250 us
+    // Varredura completa: 1 ms
+    // Debounce padrao: 20 ms
 
-    localparam [2:0]
-        ESPERA_TECLA      = 3'd0,
-        ESTABILIZA_LINHA  = 3'd1,
-        LE_COLUNAS        = 3'd2,
-        FINALIZA_LEITURA  = 3'd3,
-        ESPERA_SOLTAR     = 3'd4;
+    localparam [4:0] SEM_TECLA = 5'd16;
+    localparam [4:0] INVALIDA  = 5'd17;
 
-    reg [2:0] Eatual;
+    localparam integer CICLOS_VARREDURA =
+        4 * SCAN_LINE_CYCLES;
 
-    // -------------------------------------------------------
-    // Registradores e sinais internos
-    // -------------------------------------------------------
+    localparam integer AMOSTRAS_DEBOUNCE =
+        (DEBOUNCE_DELAY + CICLOS_VARREDURA - 1)
+        / CICLOS_VARREDURA;
 
+    reg [31:0] contador_scan;
     reg [1:0] linha_atual;
-    reg [1:0] espera_linha;
 
     reg [3:0] C_sync0;
     reg [3:0] C_sync1;
 
-    wire alguma_tecla;
-    wire tecla_estavel;
-
-    reg encontrou_tecla;
-    reg leitura_invalida;
+    reg encontrou;
+    reg invalida;
     reg [3:0] tecla_encontrada;
+
+    reg [4:0] candidata;
+    reg [4:0] estavel;
+    reg [31:0] contador_debounce;
+    reg armado;
 
     reg coluna_valida;
     reg [1:0] coluna_atual;
 
-    // -------------------------------------------------------
-    // Sincronizacao das entradas das colunas
-    // -------------------------------------------------------
+    reg encontrou_prox;
+    reg invalida_prox;
+    reg [3:0] tecla_prox;
+    reg [4:0] leitura_completa;
 
+    // Sincronizacao das colunas com o clock
     always @(posedge clock or posedge reset) begin
         if (reset) begin
             C_sync0 <= 4'b1111;
@@ -58,42 +60,18 @@ module interface_teclado #(
         end
     end
 
-    // -------------------------------------------------------
-    // Detector de presenca de alguma tecla
-    // -------------------------------------------------------
-
-    assign alguma_tecla = ~(&C_sync1);
-
-    debounce #(.DELAY(DEBOUNCE_DELAY)) DB_TECLADO (
-        .clk(clock),
-        .button_in(alguma_tecla),
-        .button_out(tecla_estavel)
-    );
-
-    // -------------------------------------------------------
-    // Controle das linhas da matriz
-    // -------------------------------------------------------
-
+    // Varredura continua, usando open-drain
     always @(*) begin
-        L = 4'b0000;
-
-        if (Eatual == ESTABILIZA_LINHA ||
-            Eatual == LE_COLUNAS) begin
-
-            case (linha_atual)
-                2'd0: L = 4'bZZZ0;
-                2'd1: L = 4'bZZ0Z;
-                2'd2: L = 4'bZ0ZZ;
-                2'd3: L = 4'b0ZZZ;
-                default: L = 4'bZZZZ;
-            endcase
-        end
+        case (linha_atual)
+            2'd0: L = 4'bZZZ0;
+            2'd1: L = 4'bZZ0Z;
+            2'd2: L = 4'bZ0ZZ;
+            2'd3: L = 4'b0ZZZ;
+            default: L = 4'bZZZZ;
+        endcase
     end
 
-    // -------------------------------------------------------
-    // Decodificador das colunas
-    // -------------------------------------------------------
-
+    // Decodificacao das colunas
     always @(*) begin
         coluna_valida = 1'b1;
         coluna_atual = 2'd0;
@@ -103,146 +81,147 @@ module interface_teclado #(
             4'b1101: coluna_atual = 2'd1;
             4'b1011: coluna_atual = 2'd2;
             4'b0111: coluna_atual = 2'd3;
-
-            default: begin
-                coluna_valida = 1'b0;
-                coluna_atual = 2'd0;
-            end
+            default: coluna_valida = 1'b0;
         endcase
     end
 
-    // -------------------------------------------------------
-    // Decodificador da tecla
-    // -------------------------------------------------------
-
+    // Mapeamento das teclas do teclado 4x4
     function [3:0] decodifica_tecla;
         input [1:0] linha;
         input [1:0] coluna;
-
         begin
             case ({linha, coluna})
-                4'b0000: decodifica_tecla = 4'd1;
-                4'b0001: decodifica_tecla = 4'd2;
-                4'b0010: decodifica_tecla = 4'd3;
-                4'b0011: decodifica_tecla = 4'd10; // A
+                4'h0: decodifica_tecla = 4'd1;
+                4'h1: decodifica_tecla = 4'd2;
+                4'h2: decodifica_tecla = 4'd3;
+                4'h3: decodifica_tecla = 4'd10;
 
-                4'b0100: decodifica_tecla = 4'd4;
-                4'b0101: decodifica_tecla = 4'd5;
-                4'b0110: decodifica_tecla = 4'd6;
-                4'b0111: decodifica_tecla = 4'd11; // B
+                4'h4: decodifica_tecla = 4'd4;
+                4'h5: decodifica_tecla = 4'd5;
+                4'h6: decodifica_tecla = 4'd6;
+                4'h7: decodifica_tecla = 4'd11;
 
-                4'b1000: decodifica_tecla = 4'd7;
-                4'b1001: decodifica_tecla = 4'd8;
-                4'b1010: decodifica_tecla = 4'd9;
-                4'b1011: decodifica_tecla = 4'd12; // C
+                4'h8: decodifica_tecla = 4'd7;
+                4'h9: decodifica_tecla = 4'd8;
+                4'hA: decodifica_tecla = 4'd9;
+                4'hB: decodifica_tecla = 4'd12;
 
-                4'b1100: decodifica_tecla = 4'd14; // *
-                4'b1101: decodifica_tecla = 4'd0;
-                4'b1110: decodifica_tecla = 4'd15; // #
-                4'b1111: decodifica_tecla = 4'd13; // D
-
-                default: decodifica_tecla = 4'd0;
+                4'hC: decodifica_tecla = 4'd14;
+                4'hD: decodifica_tecla = 4'd0;
+                4'hE: decodifica_tecla = 4'd15;
+                4'hF: decodifica_tecla = 4'd13;
             endcase
         end
     endfunction
 
-    // -------------------------------------------------------
-    // Maquina de estados da interface
-    // -------------------------------------------------------
+    // Acumula as leituras das quatro linhas.
+    // Mais de uma tecla torna a leitura invalida.
+    always @(*) begin
+        encontrou_prox = encontrou;
+        invalida_prox = invalida;
+        tecla_prox = tecla_encontrada;
 
+        if (C_sync1 != 4'b1111) begin
+            if (!coluna_valida) begin
+                invalida_prox = 1'b1;
+            end else if (encontrou) begin
+                invalida_prox = 1'b1;
+            end else begin
+                encontrou_prox = 1'b1;
+                tecla_prox =
+                    decodifica_tecla(
+                        linha_atual,
+                        coluna_atual
+                    );
+            end
+        end
+
+        if (invalida_prox)
+            leitura_completa = INVALIDA;
+        else if (encontrou_prox)
+            leitura_completa = {1'b0, tecla_prox};
+        else
+            leitura_completa = SEM_TECLA;
+    end
+
+    // Varredura e debounce
     always @(posedge clock or posedge reset) begin
         if (reset) begin
-            Eatual <= ESPERA_TECLA;
+            contador_scan <= 0;
+            linha_atual <= 0;
 
-            linha_atual <= 2'd0;
-            espera_linha <= 2'd0;
+            encontrou <= 0;
+            invalida <= 0;
+            tecla_encontrada <= 0;
 
-            encontrou_tecla <= 1'b0;
-            leitura_invalida <= 1'b0;
-            tecla_encontrada <= 4'd0;
+            candidata <= SEM_TECLA;
+            estavel <= SEM_TECLA;
+            contador_debounce <= 0;
+            armado <= 1'b1;
 
-            tecla <= 4'd0;
-            tecla_valida <= 1'b0;
+            tecla <= 0;
+            tecla_valida <= 0;
         end else begin
 
             // Pulso de apenas um ciclo
             tecla_valida <= 1'b0;
 
-            case (Eatual)
+            if (contador_scan == SCAN_LINE_CYCLES - 1) begin
+                contador_scan <= 0;
 
-                ESPERA_TECLA: begin
-                    if (tecla_estavel) begin
-                        linha_atual <= 2'd0;
-                        espera_linha <= 2'd0;
+                if (linha_atual == 2'd3) begin
+                    // Terminou uma varredura completa
+                    linha_atual <= 0;
 
-                        encontrou_tecla <= 1'b0;
-                        leitura_invalida <= 1'b0;
+                    encontrou <= 0;
+                    invalida <= 0;
+                    tecla_encontrada <= 0;
 
-                        Eatual <= ESTABILIZA_LINHA;
+                    // Debounce por leituras completas
+                    if (leitura_completa != candidata) begin
+                        candidata <= leitura_completa;
+                        contador_debounce <= 1;
+                    end else if (
+                        contador_debounce < AMOSTRAS_DEBOUNCE
+                    ) begin
+                        contador_debounce <=
+                            contador_debounce + 1'b1;
                     end
-                end
 
-                ESTABILIZA_LINHA: begin
-                    // Aguarda a propagacao dos sinais
-                    // e a sincronizacao das colunas.
+                    // Aceita somente leitura estabilizada
+                    if (
+                        leitura_completa == candidata &&
+                        contador_debounce >=
+                            AMOSTRAS_DEBOUNCE - 1 &&
+                        estavel != leitura_completa
+                    ) begin
+                        estavel <= leitura_completa;
 
-                    if (espera_linha == 2'd2) begin
-                        espera_linha <= 2'd0;
-                        Eatual <= LE_COLUNAS;
-                    end else begin
-                        espera_linha <= espera_linha + 1'b1;
-                    end
-                end
-
-                LE_COLUNAS: begin
-
-                    if (coluna_valida) begin
-                        if (encontrou_tecla) begin
-                            // Mais de uma tecla encontrada
-                            leitura_invalida <= 1'b1;
-                        end else begin
-                            encontrou_tecla <= 1'b1;
-
-                            tecla_encontrada <=
-                                decodifica_tecla(
-                                    linha_atual,
-                                    coluna_atual
-                                );
+                        if (leitura_completa == SEM_TECLA) begin
+                            // Tecla solta: aceita novo evento
+                            armado <= 1'b1;
+                        end else if (
+                            leitura_completa < SEM_TECLA &&
+                            armado
+                        ) begin
+                            tecla <= leitura_completa[3:0];
+                            tecla_valida <= 1'b1;
+                            armado <= 1'b0;
                         end
-                    end else if (C_sync1 != 4'b1111) begin
-                        // Multiplas colunas ativas
-                        leitura_invalida <= 1'b1;
                     end
 
-                    if (linha_atual == 2'd3) begin
-                        Eatual <= FINALIZA_LEITURA;
-                    end else begin
-                        linha_atual <= linha_atual + 1'b1;
-                        espera_linha <= 2'd0;
-                        Eatual <= ESTABILIZA_LINHA;
-                    end
+                end else begin
+                    // Proxima linha
+                    linha_atual <= linha_atual + 1'b1;
+
+                    encontrou <= encontrou_prox;
+                    invalida <= invalida_prox;
+                    tecla_encontrada <= tecla_prox;
                 end
 
-                FINALIZA_LEITURA: begin
-                    if (encontrou_tecla && !leitura_invalida) begin
-                        tecla <= tecla_encontrada;
-                        tecla_valida <= 1'b1;
-                    end
-
-                    Eatual <= ESPERA_SOLTAR;
-                end
-
-                ESPERA_SOLTAR: begin
-                    if (!tecla_estavel) begin
-                        Eatual <= ESPERA_TECLA;
-                    end
-                end
-
-                default: begin
-                    Eatual <= ESPERA_TECLA;
-                end
-
-            endcase
+            end else begin
+                contador_scan <= contador_scan + 1'b1;
+            end
         end
     end
 
