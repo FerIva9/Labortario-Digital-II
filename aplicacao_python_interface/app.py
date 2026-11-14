@@ -1,6 +1,7 @@
 """Apresentador desktop Fábula TEA +. Execute: python app.py."""
 import csv
 import json
+import queue
 import sqlite3
 import sys
 from datetime import datetime
@@ -11,7 +12,9 @@ from PIL import Image, ImageTk, ImageOps
 
 from protocol import Decoder, Event, Result
 from player_store import PlayerStore, summarize
-from runtime_paths import CATALOG_PATH, image_path, records_dir
+from runtime_paths import CATALOG_PATH, image_path, records_dir, cloud_config_path, cloud_preferences_path
+from cloud_firebase import CloudConfig, SyncWorker
+from cloud_preferences import CloudPreferences
 from ui_layout import ScrollableFrame
 from windows_display import configure_display
 
@@ -27,7 +30,14 @@ class App:
             if len(item['personagens']) != 6:
                 raise ValueError(f'História {story}: configure exatamente seis personagens.')
         self.connection = None
-        self.store = PlayerStore(records_dir() / 'jogadores.sqlite3')
+        self.db_path = records_dir() / 'jogadores.sqlite3'
+        self.store = PlayerStore(self.db_path)
+        self.cloud_worker = None
+        self.cloud_dialog = None
+        self.cloud_active = False
+        self.cloud_status = 'Preparando sincronização automática · coleta local ativa'
+        self.cloud_summary = tk.StringVar(value=self.cloud_status)
+        self.cloud_preferences = CloudPreferences()
         self.player_id = None
         self.session_id = None
         self.pending_move = None
@@ -56,9 +66,14 @@ class App:
         style.theme_use('clam')
         style.configure('TCombobox', padding=7, font=(self.font_family, 10), fieldbackground='white')
         style.configure('TButton', font=(self.font_family, 10), padding=(12, 9), background='#edf0f3', borderwidth=0)
-        style.map('TButton', background=[('active', '#dce5eb')])
+        style.map('TButton', background=[('disabled', '#edf0f3'), ('pressed', '#c8d9df'), ('active', '#dce5eb')],
+                  foreground=[('disabled', '#6c7c85'), ('!disabled', '#203f48')])
+        style.configure('TLabel', foreground='#243e43', font=(self.font_family, 10))
+        style.configure('TEntry', padding=7, foreground='#243e43', fieldbackground='white')
+        style.configure('TCheckbutton', font=(self.font_family, 10), padding=5)
         style.configure('Accent.TButton', background='#23665e', foreground='white')
-        style.map('Accent.TButton', background=[('active', '#174e47'), ('disabled', '#cedbd8')])
+        style.map('Accent.TButton', background=[('disabled', '#d5dfdc'), ('pressed', '#103f38'), ('active', '#174e47')],
+                  foreground=[('disabled', '#53645f'), ('!disabled', 'white')])
         style.configure('Treeview', background='white', fieldbackground='white', foreground='#293d48', rowheight=max(30, tkfont.Font(root=root, family=self.font_family, size=10).metrics('linespace') + 12), borderwidth=0, font=(self.font_family, 10))
         style.configure('Treeview.Heading', background='#eef2f3', foreground='#657780', font=(self.font_family, 9, 'bold'), padding=8)
         style.map('Treeview', background=[('selected', '#d8ede7')], foreground=[('selected', '#183d35')])
@@ -180,18 +195,288 @@ class App:
         self.footer.grid(row=3, column=0, sticky='ew', pady=(10, 0))
         self.footer.columnconfigure(0, weight=1)
         self.details_button = ttk.Button(self.footer, text='Mostrar cartões e histórico', command=self.toggle_details)
-        self.details_button.grid(row=1, column=0, sticky='e', pady=(8, 0))
+        self.details_button.grid(row=2, column=0, sticky='e', pady=(8, 0))
         self.status = tk.StringVar(value='Escolha um personagem na lateral para começar.')
         self.status_label = label(self.footer, textvariable=self.status, size=9, anchor='w', justify='left')
         self.status_label.grid(row=0, column=0, sticky='ew')
-        self.footer.bind('<Configure>', lambda event: self.status_label.configure(wraplength=max(80, event.width - 8)))
+        self.cloud_session_label = label(self.footer, textvariable=self.cloud_summary, size=9, color='#23665e', anchor='w', justify='left')
+        self.cloud_session_label.grid(row=1, column=0, sticky='ew', pady=(6, 0))
+        self.footer.bind('<Configure>', lambda event: [widget.configure(wraplength=max(80, event.width - 8)) for widget in (self.status_label, self.cloud_session_label)])
         self.presentation_canvas = tk.Canvas(root, bg='white', highlightthickness=0, cursor='none')
         self.presentation_canvas.bind('<Configure>', self.schedule_render)
         self.update_gallery()
         self.refresh_ports()
+        self.build_cloud_menu()
         self.build_login()
         self.show_login()
+        root.after(500, self.poll_cloud)
+        root.after(1000, self.start_auto_sync)
         root.after(30, self.poll)
+
+    def build_cloud_menu(self):
+        bar = tk.Menu(self.root)
+        self.cloud_menu = tk.Menu(bar, tearoff=False)
+        self.cloud_menu.add_command(label=self.cloud_status, state='disabled')
+        self.cloud_menu.add_separator()
+        self.cloud_menu.add_command(label='Configurar / conectar…', command=self.connect_cloud)
+        self.cloud_automatic_var = tk.BooleanVar(value=self.cloud_preferences.automatic)
+        self.cloud_menu.add_checkbutton(label='Sincronização automática', variable=self.cloud_automatic_var,
+                                        command=self.toggle_cloud_automatic)
+        self.cloud_menu.add_command(label='Reconectar / sincronizar agora', command=self.resume_cloud)
+        self.cloud_menu.add_command(label='Detalhes da sincronização', command=self.cloud_details)
+        bar.add_cascade(label='Nuvem', menu=self.cloud_menu)
+        bar.add_command(label='Acompanhamento', command=self.open_performance)
+        self.menu_bar = bar
+        self.root.configure(menu=bar)
+
+    def open_performance(self):
+        from performance_view import PerformanceWindow
+        existing = getattr(self, 'performance_window', None)
+        if existing and not existing.closed:
+            existing.window.lift()
+            return
+        self.performance_window = PerformanceWindow(self)
+
+    def toggle_cloud_automatic(self):
+        if self.cloud_automatic_var.get():
+            self.resume_cloud()
+        else:
+            self.pause_cloud()
+
+    def cloud_details(self):
+        window = tk.Toplevel(self.root)
+        window.title('Situação da sincronização')
+        window.transient(self.root)
+        width = min(780, int(self.root.winfo_screenwidth() * .9))
+        height = min(520, int(self.root.winfo_screenheight() * .85))
+        window.geometry(f'{width}x{height}')
+        window.rowconfigure(1, weight=1)
+        window.columnconfigure(0, weight=1)
+        ttk.Label(window, text='Sincronização com a nuvem', font=(self.font_family, 15, 'bold')).grid(row=0, column=0, sticky='w', padx=18, pady=16)
+        panel = ttk.Frame(window)
+        panel.grid(row=1, column=0, sticky='nsew', padx=18)
+        panel.rowconfigure(0, weight=1)
+        panel.columnconfigure(0, weight=1)
+        content = tk.Text(panel, wrap='word', font=(self.font_family, 10), padx=12, pady=12,
+                          bg='white', fg='#243e43', relief='flat', width=45, height=12)
+        content.grid(row=0, column=0, sticky='nsew')
+        scroll = ttk.Scrollbar(panel, command=content.yview)
+        scroll.grid(row=0, column=1, sticky='ns')
+        content.configure(yscrollcommand=scroll.set)
+        def refresh():
+            try:
+                cfg = CloudConfig.load_active()
+                destination = f'Projeto: {cfg.project_id}\nUID do responsável: {cfg.operator_uid}\n'
+            except (ValueError, OSError):
+                destination = 'Configuração Firebase ausente ou inválida.\n'
+            text = (f'{self.cloud_status}\n\n{destination}Registros na fila: {self.store.outbox.count()}'
+                    f'\nInstalação: {self.store.outbox.installation_id}'
+                    f'\nConfiguração local (opcional): {cloud_config_path()}'
+                    '\n\nOs registros pendentes permanecem no computador até a confirmação do envio. '
+                    'A sincronização automática reutiliza a autorização salva. '
+                    'O acesso é salvo no cofre ou no arquivo privado criptografado. '
+                    'Jogadores, sessões e resultados são compartilhados com o Firebase. '
+                    'Sem conexão, você usa a última cópia disponível; ao reconectar, as pendências são enviadas. '
+                    'Alterações de outros computadores são consultadas periodicamente. ')
+            content.configure(state='normal')
+            content.delete('1.0', 'end')
+            content.insert('1.0', text)
+            content.configure(state='disabled')
+        def copy():
+            window.clipboard_clear()
+            window.clipboard_append(content.get('1.0', 'end-1c'))
+        buttons = ttk.Frame(window)
+        buttons.grid(row=2, column=0, sticky='ew', padx=18, pady=14)
+        ttk.Button(buttons, text='Atualizar', command=refresh).pack(side='left')
+        ttk.Button(buttons, text='Copiar detalhes', command=copy).pack(side='left', padx=8)
+        ttk.Button(buttons, text='Fechar', command=window.destroy).pack(side='right')
+        refresh()
+
+    def connect_cloud(self):
+        if self.cloud_worker and self.cloud_worker.thread.is_alive():
+            messagebox.showinfo('Nuvem', 'A sincronização anterior ainda está ativa. Pause e aguarde a conclusão da requisição antes de conectar novamente.', parent=self.root)
+            return
+        if self.cloud_dialog and self.cloud_dialog.winfo_exists():
+            self.cloud_dialog.lift()
+            return
+        initial = {'project_id': '', 'api_key': '', 'operator_uid': ''}
+        interval = 60
+        try:
+            self.cloud_preferences = CloudPreferences.load(cloud_preferences_path())
+        except (ValueError, OSError):
+            self.cloud_preferences = CloudPreferences()
+        try:
+            config = CloudConfig.load_active()
+            initial = {'project_id': config.project_id, 'api_key': config.api_key, 'operator_uid': config.operator_uid}
+            interval = config.sync_interval_seconds
+        except FileNotFoundError:
+            pass
+        except (ValueError, OSError):
+            self.cloud_status = 'Confira a configuração do Firebase antes de conectar.'
+        dialog = self.cloud_dialog = tk.Toplevel(self.root)
+        dialog.title('Conectar ao Firebase')
+        dialog.transient(self.root)
+        dialog.geometry(f'{min(600, int(self.root.winfo_screenwidth()*.85))}x{min(650, int(self.root.winfo_screenheight()*.85))}')
+        dialog.rowconfigure(0, weight=1)
+        dialog.columnconfigure(0, weight=1)
+        view = ScrollableFrame(dialog, 'white')
+        view.grid(row=0, column=0, sticky='nsew')
+        body = view.content
+        body.configure(padx=24, pady=20)
+        tk.Label(body, text='Sincronização com a nuvem', bg='white', fg='#183e3a', font=(self.font_family, 16, 'bold'), wraplength=440, anchor='w', justify='left').pack(fill='x', pady=(0, 8))
+        tk.Label(body, text='Use a conta Firebase do responsável. Os perfis dos jogadores continuam sendo escolhidos na tela inicial.', bg='white', fg='#637a7c', wraplength=440, justify='left').pack(fill='x', pady=(0, 12))
+        entries = {}
+        for key, title in [('project_id', 'ID do projeto'), ('api_key', 'Web API Key'), ('operator_uid', 'UID do responsável'), ('email', 'Email da conta Firebase'), ('password', 'Senha')]:
+            tk.Label(body, text=title, bg='white', fg='#243e43', anchor='w').pack(fill='x', pady=(6, 3))
+            entry = ttk.Entry(body, show='•' if key == 'password' else '')
+            entry.insert(0, self.cloud_preferences.email if key == 'email' else initial.get(key, ''))
+            entry.pack(fill='x')
+            entries[key] = entry
+        remember = tk.BooleanVar(value=self.cloud_preferences.remember_login)
+        ttk.Checkbutton(body, text='Manter conectado neste computador', variable=remember).pack(fill='x', pady=(12, 0))
+        tk.Label(body, text='A conexão será automática nas próximas aberturas com o acesso salvo no cofre ou no arquivo privado criptografado. A senha não é gravada. O histórico pendente será enviado ao projeto configurado.', bg='white', fg='#637a7c', wraplength=440, justify='left').pack(fill='x', pady=12)
+        feedback = tk.StringVar()
+        ttk.Label(body, textvariable=feedback, wraplength=440).pack(fill='x', pady=(0, 8))
+        def start():
+            if self.cloud_worker and self.cloud_worker.thread.is_alive():
+                feedback.set('Aguarde a conexão anterior terminar antes de salvar a nova conexão.')
+                return
+            values = {key: entry.get() for key, entry in entries.items()}
+            try:
+                cfg = CloudConfig(values['project_id'].strip(), values['api_key'].strip(), values['operator_uid'].strip(), interval).validate()
+                if not values['email'].strip() or not values['password']:
+                    raise ValueError('Informe email e senha do responsável.')
+                cfg.save(cloud_config_path())
+                self.cloud_preferences = CloudPreferences(True, remember.get(), values['email'].strip())
+                self.cloud_preferences.save(cloud_preferences_path())
+                self.cloud_automatic_var.set(True)
+            except (ValueError, OSError) as error:
+                feedback.set(str(error))
+                return
+            self.cloud_active = True
+            self.cloud_status = 'Conectando ao Firebase…'
+            self.cloud_worker = SyncWorker(self.db_path, cfg, values['email'], values['password'],
+                                           remember=remember.get(), forget_saved=not remember.get(), allow_rebind=True)
+            self.cloud_worker.start()
+            entries['password'].delete(0, 'end')
+            dialog.destroy()
+            self.cloud_dialog = None
+        ttk.Button(body, text='Conectar e sincronizar', style='Accent.TButton', command=start).pack(fill='x')
+        def cancel():
+            dialog.destroy()
+            self.cloud_dialog = None
+            self.root.after(0, self.start_auto_sync)
+        dialog.protocol('WM_DELETE_WINDOW', cancel)
+        ttk.Button(body, text='Cancelar', command=cancel).pack(fill='x', pady=8)
+        dialog.grab_set()
+        entries['email'].focus_set()
+
+    def start_auto_sync(self):
+        if self.cloud_dialog and self.cloud_dialog.winfo_exists():
+            return
+        if self.cloud_worker and self.cloud_worker.thread.is_alive():
+            return
+        try:
+            self.cloud_preferences = CloudPreferences.load(cloud_preferences_path())
+            if getattr(self, 'cloud_automatic_var', None) is not None:
+                self.cloud_automatic_var.set(self.cloud_preferences.automatic)
+            if not self.cloud_preferences.automatic:
+                self.cloud_status = 'Sincronização pausada por você · coleta local ativa'
+                return
+            if not self.cloud_preferences.remember_login:
+                self.cloud_status = 'Modo local · acesso não mantido neste computador'
+                return
+            config = CloudConfig.load_active()
+        except (ValueError, OSError) as error:
+            self.cloud_status = f'Modo local · confira a configuração da nuvem: {error}'
+            return
+        self.cloud_active = True
+        self.cloud_worker = SyncWorker(self.db_path, config, remember=True)
+        self.cloud_worker.start()
+
+    def resume_cloud(self):
+        try:
+            self.cloud_preferences = CloudPreferences.load(cloud_preferences_path())
+            self.cloud_preferences.automatic = True
+            self.cloud_preferences.remember_login = True
+            self.cloud_preferences.save(cloud_preferences_path())
+            if getattr(self, 'cloud_automatic_var', None) is not None:
+                self.cloud_automatic_var.set(True)
+        except (ValueError, OSError) as error:
+            self.cloud_status = f'Modo local · não foi possível salvar a preferência: {error}'
+            return
+        if self.cloud_worker and self.cloud_worker.thread.is_alive():
+            if self.cloud_worker.stopping:
+                self.cloud_status = 'Retomando sincronização automática…'
+                self.root.after(100, self.finish_cloud_resume)
+            else:
+                self.cloud_active = True
+                self.cloud_worker.request_sync(remember=True)
+                self.cloud_status = 'Sincronização automática ativada · verificando pendências'
+            return
+        self.start_auto_sync()
+
+    def finish_cloud_resume(self):
+        if not self.cloud_preferences.automatic:
+            return
+        if self.cloud_worker and self.cloud_worker.thread.is_alive():
+            if self.cloud_worker.stopping:
+                self.root.after(100, self.finish_cloud_resume)
+            return
+        self.start_auto_sync()
+
+    def pause_cloud(self):
+        self.cloud_active = False
+        if self.cloud_worker:
+            self.cloud_worker.stop()
+        try:
+            self.cloud_preferences.automatic = False
+            self.cloud_preferences.save(cloud_preferences_path())
+            self.cloud_automatic_var.set(False)
+            self.cloud_status = 'Sincronização pausada · dados preservados localmente'
+        except OSError:
+            self.cloud_status = 'Pausa nesta execução · não foi possível salvar a preferência'
+        self.cloud_menu.entryconfigure(0, label=self.cloud_status)
+
+    def poll_cloud(self):
+        if self.cloud_worker:
+            while True:
+                try:
+                    status = self.cloud_worker.events.get_nowait()
+                    if isinstance(status, dict) and status.get('kind') == 'data_changed':
+                        self.refresh_shared_data()
+                    elif self.cloud_active:
+                        self.cloud_status = status
+                except queue.Empty:
+                    break
+            if self.cloud_active and self.cloud_worker.thread.is_alive() and not self.cloud_worker.stopping:
+                pending = self.store.outbox.count()
+                if pending:
+                    if not getattr(self, 'cloud_status', '').startswith(('Modo local', 'Sincronização pausada')):
+                        self.cloud_status = f'Sincronizando · {pending} documentos pendentes'
+                    self.cloud_worker.request_sync()
+        self.cloud_menu.entryconfigure(0, label=self.cloud_status[:110])
+        if getattr(self, 'cloud_summary', None) is not None:
+            self.cloud_summary.set(self.cloud_status)
+            color = '#23665e' if self.cloud_status.startswith('Nuvem em dia') else '#77521d'
+            self.cloud_banner.configure(fg=color)
+            self.cloud_session_label.configure(fg=color)
+        self.root.after(500, self.poll_cloud)
+
+    def refresh_shared_data(self):
+        """Executado no loop Tk; a thread de rede nunca modifica widgets."""
+        if self.session_id and not self.store.db.execute('SELECT 1 FROM sessions WHERE id=?', (self.session_id,)).fetchone():
+            self.end_session()
+            self.login_feedback.set('Este jogador ou sessão foi excluído em outro computador. A lista foi atualizada.')
+        self.reload_players()
+        if self.player_id:
+            player = self.store.db.execute('SELECT name FROM players WHERE id=?', (self.player_id,)).fetchone()
+            if player:
+                self.active_player_label.configure(text=player['name'])
+                self.refresh_stats()
+        performance = getattr(self, 'performance_window', None)
+        if performance and not performance.closed and not performance.loading:
+            performance.load_local()
 
     def show_stats(self, tabs, panel):
         if not self.details.winfo_manager():
@@ -216,7 +501,12 @@ class App:
             return widget
         text('FÁBULA TEA +', 12, '#23665e', True)
         text('Quem vai jogar?', 24, '#243e43', True)
-        text('Escolha um perfil para iniciar a sessão.')
+        text('Escolha um jogador. A lista e o histórico são compartilhados entre os computadores.')
+        self.cloud_banner = tk.Label(card, textvariable=self.cloud_summary, bg='#edf5f0', fg='#77521d',
+                                     font=(self.font_family, 10), anchor='w', justify='left', padx=12, pady=10)
+        self.cloud_banner.pack(fill='x', pady=(0, 12))
+        card.bind('<Configure>', lambda event: self.cloud_banner.configure(wraplength=max(100, event.width - 84)), add='+')
+        ttk.Button(card, text='Acompanhamento · jogadores e sessões', command=self.open_performance).pack(fill='x', pady=(0, 12))
         text('Buscar jogador', 10)
         self.player_search = tk.StringVar()
         self.login_search_entry = ttk.Entry(card, textvariable=self.player_search, font=(self.font_family, 11))
@@ -318,7 +608,7 @@ class App:
         key = selection[0]
         name = next(p['name'] for p in self.players if p['id'] == key)
         if not messagebox.askyesno('Excluir perfil',
-                f'Excluir o perfil "{name}" e todo o seu histórico de sessões e jogadas?\n\nEsta ação não pode ser desfeita.',
+                f'Excluir o perfil "{name}" e todo o seu histórico de sessões e jogadas?\n\nA exclusão também será enviada à nuvem quando houver sincronização. Esta ação não pode ser desfeita.',
                 parent=self.root, icon='warning', default='no'):
             return
         try:
@@ -328,7 +618,7 @@ class App:
             return
         self.hide_profile_editor()
         self.reload_players()
-        self.login_feedback.set('Perfil e histórico excluídos.')
+        self.login_feedback.set('Perfil excluído. A exclusão será compartilhada quando houver conexão.')
 
     def show_login(self):
         self.sidebar_view.grid_forget()
@@ -349,7 +639,7 @@ class App:
             if query not in player['name'].casefold():
                 continue
             rows = self.store.history(player['id'])
-            last = datetime.fromisoformat(rows[-1]['time']).strftime('%d/%m/%Y') if rows else 'Sem jogadas ainda'
+            last = datetime.fromisoformat(rows[-1]['time'].replace('Z', '+00:00')).astimezone().strftime('%d/%m/%Y') if rows else 'Sem jogadas ainda'
             name = player['name']
             if sum(p['name'].casefold() == name.casefold() for p in self.players) > 1:
                 name += f" · {player['id'][:8]}"
@@ -383,7 +673,7 @@ class App:
         self.hide_profile_editor()
         self.player_search.set('')
         self.reload_players(selected=key)
-        self.login_feedback.set('Jogador adicionado. Clique em Iniciar sessão quando estiver pronto.')
+        self.login_feedback.set('Jogador salvo. A sincronização é automática; você já pode iniciar a sessão.')
         self.start_session_button.focus_set()
 
     def new_session(self):
@@ -446,7 +736,10 @@ class App:
             return
         move, row = pending
         try:
-            self.store.result(move, result.correct)
+            if not self.store.result(move, result.correct):
+                self.refresh_shared_data()
+                self.status.set('A jogada já foi avaliada ou removida; resultado não reaplicado.')
+                return
         except (sqlite3.Error, OSError) as error:
             messagebox.showerror('Falha ao salvar resultado', str(error))
             return
@@ -504,6 +797,7 @@ class App:
         if self.presentation_mode:
             return self.exit_presentation()
         self.presentation_mode = True
+        self.root.configure(menu='')
         self.root.attributes('-fullscreen', True)
         self.presentation_canvas.place(x=0, y=0, relwidth=1, relheight=1)
         tk.Misc.lift(self.presentation_canvas)
@@ -517,6 +811,7 @@ class App:
             self.presentation_canvas.place_forget()
             self.canvas.focus_set()
         self.root.attributes('-fullscreen', False)
+        self.root.configure(menu=self.menu_bar)
         self.schedule_render()
         return 'break'
 
@@ -676,6 +971,9 @@ class App:
         self.present(Decoder().feed(frame)[0], 'Demonstração')
 
     def present(self, event, source):
+        if source == 'Serial' and self.session_id and not self.store.db.execute('SELECT 1 FROM sessions WHERE id=?', (self.session_id,)).fetchone():
+            self.refresh_shared_data()
+            return
         story = self.catalog[str(event.story)]
         character = story['personagens'][event.character]
         self.story_label.configure(text=story['nome'])
@@ -717,6 +1015,8 @@ class App:
             self.history.delete(row)
 
     def close(self):
+        if self.cloud_worker:
+            self.cloud_worker.stop()
         self.disconnect()
         if self.log_file:
             self.log_file.close()
@@ -725,6 +1025,9 @@ class App:
 
 
 if __name__ == '__main__':
+    if len(sys.argv) == 3 and sys.argv[1] in ('--check-installation', '--check-ui'):
+        from installation_check import main as check_installation
+        raise SystemExit(check_installation(sys.argv[2], cloud=sys.argv[1] != '--check-ui'))
     configure_display()
     root = tk.Tk()
     try:

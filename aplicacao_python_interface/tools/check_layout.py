@@ -8,13 +8,14 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import tkinter as tk
 from app import App
-from protocol import Event, Result
+from protocol import Event, Result, Decoder
+from cloud_firebase import CloudConfig
 
 for scale in (1.33, 1.67, 2.0, 2.67):
     root = tk.Tk()
     root.tk.call('tk', 'scaling', scale)
     temporary = tempfile.TemporaryDirectory()
-    with patch('app.records_dir', return_value=Path(temporary.name)):
+    with patch('app.records_dir', return_value=Path(temporary.name)), patch.object(App, 'start_auto_sync'):
         app = App(root)
     root.update()
     assert app.login_view.winfo_ismapped()
@@ -27,6 +28,18 @@ for scale in (1.33, 1.67, 2.0, 2.67):
         for control in (app.login_search_entry, app.start_session_button, app.profile_options):
             assert control.winfo_x() >= 0
             assert control.winfo_x() + control.winfo_width() <= control.master.winfo_width()
+    app.cloud_details()
+    root.update()
+    details_windows = [w for w in root.winfo_children() if isinstance(w, tk.Toplevel)]
+    assert len(details_windows) == 1
+    assert details_windows[0].winfo_width() > 400
+    details_windows[0].destroy()
+    with patch('app.CloudConfig.load_active', return_value=CloudConfig('fabula-teste', 'chave-ficticia', 'operador123')), patch('app.cloud_preferences_path', return_value=Path(temporary.name)/'preferences.json'):
+        app.connect_cloud()
+    root.update()
+    assert app.cloud_dialog.winfo_exists()
+    app.cloud_dialog.destroy()
+    app.cloud_dialog = None
     app.show_profile_editor()
     root.update()
     assert app.profile_editor.winfo_ismapped()
@@ -67,11 +80,26 @@ for scale in (1.33, 1.67, 2.0, 2.67):
         root.update()
         app.present(Event(1, 1), 'Serial')
         assert app.presentation_mode and app.photo is not None
+        assert str(root.cget('menu')) == ''
         app.exit_presentation()
         root.update()
+        assert str(root.cget('menu')) == str(app.menu_bar)
         print(f'OK escala Tk {scale}: {width}x{height}', flush=True)
     app.present(Event(2, 3), 'Serial')
     app.receive_result(Result(True))
+    evaluated_before = len([r for r in app.store.history(app.player_id) if r['result'] is not None])
+    decoder = Decoder()
+    for fragment in (b'H0,P1\nR', b'1\nH0,P1\nR0\n'):
+        for event in decoder.feed(fragment):
+            if isinstance(event, Event):
+                app.present(event, 'Serial')
+            elif isinstance(event, Result):
+                app.receive_result(event)
+    evaluated = [r for r in app.store.history(app.player_id) if r['result'] is not None]
+    assert len(evaluated) == evaluated_before + 2
+    assert [r['result'] for r in evaluated[-2:]] == [1, 0]
+    app.receive_result(Result(True))
+    assert len([r for r in app.store.history(app.player_id) if r['result'] is not None]) == len(evaluated)
     old_player = app.player_id
     old_session = app.session_id
     app.end_session()
@@ -101,6 +129,44 @@ for scale in (1.33, 1.67, 2.0, 2.67):
     assert not app.store.history(old_player)
     assert str(app.start_session_button['state']) == 'disabled'
     assert str(app.profile_options['state']) == 'disabled'
+    if scale == 1.33:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tests'))
+        from shared_fixture import SharedServer
+        from player_store import PlayerStore
+        from cloud_replica import SharedSync
+        server = SharedServer()
+        foreign = PlayerStore(Path(temporary.name) / 'foreign.sqlite3')
+        try:
+            local_sync = SharedSync(app.store, server.client())
+            foreign_sync = SharedSync(foreign, server.client())
+            other_player = foreign.add_player('Jogador de outro computador')
+            remote_session = foreign.session(other_player)
+            foreign.result(foreign.move(remote_session, Event(2, 3)), True)
+            foreign_sync.cycle()
+            local_sync.cycle()
+            app.refresh_shared_data()
+            imported = app.store.players()[0]['id']
+            assert app.login_players.exists(imported)
+            app.login_players.selection_set(imported)
+            app.choose_player()
+            app.new_session()
+            local_sync.cycle()
+            foreign.rename_player(other_player, 'Nome alterado remotamente')
+            foreign_sync.cycle()
+            local_sync.cycle()
+            app.refresh_shared_data()
+            assert app.active_player_label.cget('text') == 'Nome alterado remotamente'
+            foreign.delete_player(other_player)
+            foreign_sync.cycle()
+            local_sync.cycle()
+            app.refresh_shared_data()
+            root.update()
+            assert app.session_id is None and app.login_view.winfo_ismapped()
+            assert not app.login_players.exists(imported)
+            assert 'outro computador' in app.login_feedback.get()
+            print('OK: jogador remoto na tela inicial, nome atualizado durante sessão e exclusão remota segura.', flush=True)
+        finally:
+            foreign.close()
     for job in root.tk.call('after', 'info'):
         root.after_cancel(job)
     app.close()
