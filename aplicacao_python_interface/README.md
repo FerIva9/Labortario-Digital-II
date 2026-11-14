@@ -37,10 +37,46 @@ $check.ExitCode
 ```
 
 Esse comando testa Tkinter e imagens e realiza um ensaio Firebase real usando
-apenas dados fictícios de uma instalação temporária, removidos ao final.
+apenas dados fictícios de duas instalações temporárias, removidos ao final.
 Código de saída zero indica sucesso. Não acessa o histórico local de jogadores.
 O executável com autorização incorporada fica fora do Git, assim como os arquivos
 privados originais. Distribua-o por um canal privado.
+
+### Acompanhamento de jogadores e sessões
+
+Na tela inicial, clique em **Acompanhamento · jogadores e sessões**, ou use o
+menu **Acompanhamento** durante o jogo. Não é necessário iniciar uma sessão para
+consultar o histórico. A janela permite:
+
+- Comparar todos os jogadores e abrir suas sessões com duplo clique.
+- Filtrar jogador, sessão, tema e período inclusivo (`AAAA-MM-DD`). O período
+  e agrupamento diário usam UTC, indicado nos campos, para que SQLite e Firebase
+  produzam os mesmos totais mesmo entre computadores com fusos diferentes.
+  Os horários detalhados continuam exibindo seu offset ou `Z` (UTC).
+- Consultar apresentações, avaliações, acertos, erros, ausência de resultado,
+  taxa de acerto e cobertura dos resultados por jogador, sessão, tema,
+  personagem e dia. Sessões vazias também aparecem quando não há filtro de tema.
+- Examinar cada jogada, seus horários e o resultado, e exportar o filtro em CSV.
+- Visualizar o acerto por dia no gráfico e a diferença entre a última e a
+  primeira sessão avaliada do período, em pontos percentuais.
+
+A taxa geral usa todas as avaliações do filtro, não a média das taxas de sessões.
+Sem avaliações, a taxa é `—`, não zero. Demonstrações não entram no histórico de
+desempenho. O início da sessão é manual e a última apresentação não representa
+automaticamente seu encerramento; não são inferidos duração de rodada ou tempo
+de resposta. As métricas descrevem o jogo e não fornecem diagnóstico clínico.
+
+**Atualizar dados locais** lê o SQLite deste computador. **Consultar Firebase**
+consulta todas as instalações do mesmo operador, em segundo plano, mantendo o
+painel anterior se houver erro. A leitura remota não modifica o banco local e
+mostra códigos de jogadores, pois nomes não são enviados. A visão é atualizada
+sob demanda e pode estar parcial enquanto outro computador ainda sincroniza.
+
+Antes da primeira consulta geral, publique **todo o arquivo
+`firebase/firestore.rules`** no Console. A conexão deve estar salva pelo menu
+Nuvem ou pelo pacote privado. As permissões permanecem limitadas ao mesmo UID;
+compartilhar dados com uma conta médica diferente exige uma etapa própria de
+controle de acesso. Teste gráfico independente: `python3 tools/check_performance.py`.
 
 Aplicação desktop Tkinter para mostrar no monitor o personagem recebido da FPGA. Compatível com o protocolo da Semana3.
 

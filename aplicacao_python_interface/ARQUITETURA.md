@@ -37,7 +37,7 @@ contém senha. O acesso privado existente deve ser validado antes de compilar:
 .\.venv-build\Scripts\python.exe tools/prepare_private_access.py --check
 ```
 
-Ensaio completo com autorização salva, instalação temporária e dados fictícios
+Ensaio completo com autorização salva, instalações temporárias e dados fictícios
 (realiza operações reais no Firestore e remove os documentos ao terminar):
 
 ```powershell
@@ -53,8 +53,10 @@ de Windows compatível, internet para sincronizar e driver USB/UART para a FPGA;
 não precisa instalar Python ou copiar arquivos de configuração.
 
 Cada instalação cria seu SQLite em `%LOCALAPPDATA%\FabulaTEA\registros` e
-seu próprio identificador. O envio é local → nuvem: jogadores de outro
-computador não são baixados. As rotas remotas são:
+seu próprio identificador. O envio é local → nuvem. O painel Acompanhamento
+consulta todas as instalações do mesmo operador em memória, sem importar os
+jogadores remotos para o cadastro local nem permitir editar os dados remotos.
+As rotas remotas são:
 
 ```text
 operators/{UID}/installations/{INSTALLATION_ID}/players/{PLAYER_ID}

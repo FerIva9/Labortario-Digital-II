@@ -215,8 +215,17 @@ class App:
         self.cloud_menu.add_command(label='Ativar sincronização automática', command=self.resume_cloud)
         self.cloud_menu.add_command(label='Detalhes da sincronização', command=self.cloud_details)
         bar.add_cascade(label='Nuvem', menu=self.cloud_menu)
+        bar.add_command(label='Acompanhamento', command=self.open_performance)
         self.menu_bar = bar
         self.root.configure(menu=bar)
+
+    def open_performance(self):
+        from performance_view import PerformanceWindow
+        existing = getattr(self, 'performance_window', None)
+        if existing and not existing.closed:
+            existing.window.lift()
+            return
+        self.performance_window = PerformanceWindow(self)
 
     def cloud_details(self):
         window = tk.Toplevel(self.root)
@@ -424,6 +433,7 @@ class App:
         text('FÁBULA TEA +', 12, '#23665e', True)
         text('Quem vai jogar?', 24, '#243e43', True)
         text('Escolha um perfil para iniciar a sessão.')
+        ttk.Button(card, text='Acompanhamento · jogadores e sessões', command=self.open_performance).pack(fill='x', pady=(0, 12))
         text('Buscar jogador', 10)
         self.player_search = tk.StringVar()
         self.login_search_entry = ttk.Entry(card, textvariable=self.player_search, font=(self.font_family, 11))

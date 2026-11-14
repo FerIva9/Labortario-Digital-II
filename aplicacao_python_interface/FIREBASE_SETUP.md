@@ -170,6 +170,38 @@ Para preparar o acesso sem redigitar credenciais:
 
 A sincronização começa automaticamente e os registros permanecem no SQLite quando a rede falha. O pacote não transporta o histórico de pacientes: cada instalação mantém seu banco e identificador próprios. Cotas e pausas do plano gratuito permanecem iguais. Tokens podem ser revogados; nesse caso, conecte novamente ou refaça a preparação. Referência: [sessões Firebase](https://firebase.google.com/docs/auth/admin/manage-sessions).
 
+## Painel de acompanhamento entre computadores
+
+Publique o conteúdo completo de `firebase/firestore.rules` no Console após
+atualizar o código. A rota `installations/{installation}` permite registrar e
+descobrir instalações usando apenas ID e versão do esquema, sem dados pessoais. As regras
+das subcoleções continuam limitadas ao operador habilitado e ao seu próprio UID.
+
+Abra **Acompanhamento → Consultar Firebase**. São consultados jogadores, sessões
+e jogadas de todas as instalações desse operador, com paginação. Não há acesso
+a dados pertencentes a outros operadores; contas médicas distintas não recebem
+compartilhamento automaticamente nesta versão. O pacote distribuído representa
+a autorização do operador configurado e deve continuar privado.
+
+Os nomes dos pacientes permanecem no SQLite de origem. A consulta remota mostra
+códigos de jogador e instalação. Mantenha a correspondência de códigos sob
+controle do responsável; esta versão não inclui um cadastro clínico nominal.
+
+Instalações de versões anteriores ainda não têm esse registro intermediário.
+Abra a versão atualizada em cada computador com sincronização habilitada, mesmo
+sem novas jogadas: seu índice será registrado e o histórico anterior passará a
+ser encontrado. Apenas copiar o `.exe` para o computador do profissional não
+registra automaticamente instalações antigas de outros computadores.
+
+O painel é uma leitura separada: não importa perfis remotos, não modifica
+documentos e não substitui o cadastro local. Dados ainda na fila offline de outro
+computador só aparecem após seu envio. Durante sincronização ativa, consultas de
+várias coleções podem mostrar estados parciais; atualize quando a fila zerar.
+
+O ensaio `tools/check_cloud_integration.py --run-live --saved-access` também testa
+a leitura usada pelo painel e a descoberta de instalações. Se retornar 403 na
+descoberta, confira a publicação das regras atualizadas no projeto correto.
+
 ## 11. Onde os documentos aparecem
 
 ```text

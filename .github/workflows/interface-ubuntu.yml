@@ -31,3 +31,5 @@ jobs:
         run: .venv/bin/python -m unittest discover -s tests -v
       - name: Interface gráfica em tela virtual
         run: xvfb-run -a .venv/bin/python tools/check_layout.py
+      - name: Painel de acompanhamento
+        run: xvfb-run -a .venv/bin/python tools/check_performance.py

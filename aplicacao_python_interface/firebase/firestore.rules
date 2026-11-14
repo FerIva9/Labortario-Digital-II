@@ -47,6 +47,16 @@ service cloud.firestore {
       // Documento habilitado manualmente pelo administrador no Firebase Console.
       allow get: if request.auth != null && request.auth.uid == uid && resource.data.enabled == true;
       allow list, create, update, delete: if false;
+      // Índice mínimo de instalações, sem nomes ou dados pessoais.
+      match /installations/{installation} {
+        allow get, list: if authorized(uid);
+        allow create, update: if authorized(uid)
+          && request.resource.data.keys().hasAll(['installation_id', 'schema_version'])
+          && request.resource.data.keys().hasOnly(['installation_id', 'schema_version'])
+          && request.resource.data.installation_id == installation
+          && request.resource.data.schema_version == 1;
+        allow delete: if authorized(uid);
+      }
       match /installations/{installation}/{collection}/{id} {
         allow read, delete: if authorized(uid) && collection in ['players', 'sessions', 'moves'];
         allow create, update: if authorized(uid)

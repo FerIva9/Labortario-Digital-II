@@ -27,6 +27,8 @@ def main(report_path):
                     print(f'OK: Tkinter, catálogo e {count} imagens do pacote.')
                 finally:
                     root.destroy()
+                from tools.check_performance import main as check_performance
+                check_performance()
                 # O teste usa instalação temporária e remove apenas seus dados fictícios.
                 from tools.check_cloud_integration import main as check_cloud
                 sys.argv = [sys.argv[0], '--run-live', '--saved-access']

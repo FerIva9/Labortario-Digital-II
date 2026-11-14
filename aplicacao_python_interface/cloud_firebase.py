@@ -157,6 +157,7 @@ class FirestoreClient:
         self._refresh_token = None
         self._expires_at = 0
         self.on_refresh_token = None
+        self._registered_installations = set()
         self.base = f'https://firestore.googleapis.com/v1/projects/{config.project_id}/databases/(default)/documents'
 
     def _request(self, stage, *args, **kwargs):
@@ -234,8 +235,65 @@ class FirestoreClient:
         path = self.document_path(installation, entity, record_id)
         return self.transport('GET', self.base + '/' + path, token=self.token())
 
+    def list_documents(self, path, *, show_missing=False):
+        """Lê todas as páginas, sem limitar silenciosamente o histórico."""
+        documents = []
+        page = None
+        seen_pages = set()
+        while True:
+            params = {'pageSize': 300}
+            if show_missing:
+                params['showMissing'] = 'true'
+            if page:
+                params['pageToken'] = page
+            result = self._request('Consulta de acompanhamento no Firestore', 'GET',
+                                   self.base + '/' + path + '?' + urlencode(params), token=self.token())
+            documents.extend(result.get('documents', []))
+            next_page = result.get('nextPageToken')
+            if not next_page:
+                return documents
+            if next_page in seen_pages:
+                raise FirebaseError('Paginação inválida no Firestore. A consulta não foi concluída.')
+            seen_pages.add(next_page)
+            page = next_page
+
+    def register_installation(self, installation):
+        """Índice mínimo para descoberta com autenticação Firebase comum."""
+        self.document_path(installation, 'players', 'validation')
+        if installation in self._registered_installations:
+            return
+        path = f'operators/{self.config.operator_uid}/installations/{installation}'
+        self._request('Registro da instalação no Firestore', 'PATCH', self.base + '/' + path,
+                      {'fields': {'installation_id': firestore_value(installation), 'schema_version': firestore_value(1)}},
+                      token=self.token())
+        self._registered_installations.add(installation)
+
+    def delete_installation_registration(self, installation):
+        """Usado exclusivamente pela limpeza da instalação fictícia de ensaio."""
+        self.document_path(installation, 'players', 'validation')
+        path = f'operators/{self.config.operator_uid}/installations/{installation}'
+        self._request('Limpeza do registro da instalação de teste', 'DELETE', self.base + '/' + path, token=self.token())
+        self._registered_installations.discard(installation)
+
+    def performance_documents(self, installation=None):
+        """Consulta apenas instalações do operador autenticado, sem importar no SQLite."""
+        parent = f'operators/{self.config.operator_uid}/installations'
+        if installation:
+            self.document_path(installation, 'players', 'validation')
+            installations = [installation]
+        else:
+            installations = [doc['name'].rsplit('/', 1)[-1]
+                             for doc in self.list_documents(parent)]
+        result = {entity: [] for entity in ('players', 'sessions', 'moves')}
+        for identifier in installations:
+            self.document_path(identifier, 'players', 'validation')
+            for entity in result:
+                result[entity].extend(self.list_documents(f'{parent}/{identifier}/{entity}'))
+        return result
+
 
 def sync_once(store, client):
+    client.register_installation(store.outbox.installation_id)
     items = store.outbox.pending()
     if not items:
         return 0
