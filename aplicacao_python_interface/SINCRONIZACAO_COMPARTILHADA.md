@@ -84,7 +84,7 @@ Depois de publicar as regras no Firebase real, o ensaio explícito usa a autoriz
 python tools/check_shared_integration.py --run-live
 ```
 
-Esse último comando pode realizar a migração inicial dos documentos legados. Cria somente perfis de teste, verifica duas instalações e remove seus dados ao final, deixando os marcadores mínimos de exclusão. Se a rede falhar antes da limpeza, será necessário conferir os perfis fictícios no aplicativo/Console; não há exclusão indiscriminada de coleções reais.
+Esse último comando limita as leituras aplicadas ao cache de teste e as escritas ao perfil fictício do ensaio. Não executa migração de históricos reais. Verifica duas instalações e remove seus dados ao final, deixando os marcadores mínimos de exclusão. Se a rede falhar antes da limpeza, será necessário conferir os perfis fictícios no aplicativo/Console; não há exclusão indiscriminada de coleções reais. A migração completa continua sendo realizada pela aplicação normal, com o backup descrito acima.
 
 No Windows, após gerar:
 

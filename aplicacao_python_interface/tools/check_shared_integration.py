@@ -1,6 +1,7 @@
 """Ensaio bidirecional: emulador local ou Firebase explícito com acesso salvo."""
 import argparse
 import base64
+from dataclasses import replace
 import json
 from pathlib import Path
 import sys
@@ -10,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cloud_firebase import CloudConfig, FirestoreClient, FirebaseError, request_json, SyncWorker
 from cloud_credentials import CredentialUnavailable
 from cloud_portable import PortableVault
-from cloud_replica import SharedSync
+from cloud_replica import SharedSync, global_id
 from player_store import PlayerStore, summarize
 from protocol import Event
 
@@ -23,12 +24,55 @@ def drain(sync):
     raise RuntimeError('Fila não concluiu o envio.')
 
 
+def scope_test_client(value, scope):
+    """Limita o ensaio real ao perfil fictício, sem migrar históricos de produção."""
+    read = value.shared_changes
+    commit = value.commit_shared
+    performance = value.performance_documents
+    def shared_changes(cursors):
+        if scope['player'] is None:
+            raise RuntimeError('Perfil fictício ainda não inicializado.')
+        documents, updated = read(cursors)
+        filtered = {entity: [] for entity in documents}
+        for entity, rows in documents.items():
+            for doc in rows:
+                identifier = doc['name'].rsplit('/', 1)[-1]
+                parent = doc.get('fields', {}).get('player_id', {}).get('stringValue')
+                if (entity == 'players' and identifier == scope['player']) or \
+                   (entity != 'players' and parent == scope['player']) or identifier in scope[entity]:
+                    filtered[entity].append(doc)
+                    scope[entity].add(identifier)
+        return filtered, updated
+    def commit_shared(items):
+        if scope['player'] is None:
+            raise RuntimeError('Perfil fictício ainda não inicializado.')
+        for item in items:
+            entity, identifier, data = item['entity'], item['remote_id'], item['data']
+            permitted = (identifier in scope[entity] if data['deleted'] else
+                         identifier == scope['player'] if entity == 'players' else
+                         data.get('player_id') == scope['player'])
+            if not permitted:
+                raise RuntimeError('Ensaio bloqueou uma escrita fora dos dados fictícios.')
+        # Registra todos os IDs antes do envio para permitir limpar também uma resposta perdida.
+        for item in items:
+            scope[item['entity']].add(item['remote_id'])
+        return commit(items)
+    def performance_documents(*args, **kwargs):
+        if kwargs.get('legacy_only'):
+            return {entity: [] for entity in ('players', 'sessions', 'moves')}
+        return performance(*args, **kwargs)
+    value.shared_changes = shared_changes
+    value.commit_shared = commit_shared
+    value.performance_documents = performance_documents
+    return value
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--saved-access', action='store_true', help='compatibilidade: o ensaio remoto sempre usa acesso salvo')
     parser.add_argument('--config', type=Path, help='configuração local opcional')
     parser.add_argument('--emulator', action='store_true', help='usa apenas http://127.0.0.1:8686 e projeto demo-fabula')
-    parser.add_argument('--run-live', action='store_true', help='autoriza ensaio no Firebase real e migração legada inicial')
+    parser.add_argument('--run-live', action='store_true', help='autoriza ensaio no Firebase real restrito aos dados fictícios, sem migrar históricos reais')
     args = parser.parse_args()
     if not args.emulator and not args.run_live:
         print('Sem requisições. Use --emulator ou --run-live. O ensaio remoto exige as novas regras publicadas.')
@@ -57,17 +101,20 @@ def main():
         vault = PortableVault()
         token = vault.load(config)
         if not token: raise ValueError('Acesso salvo ausente.')
+        scope = dict(player=None, players=set(), sessions=set(), moves=set())
         def client():
             value=FirestoreClient(config)
             value.restore(token)
             vault.save(config,value._refresh_token)
-            return value
+            return scope_test_client(value, scope)
     with tempfile.TemporaryDirectory() as folder:
         a,b=PlayerStore(Path(folder)/'a.sqlite3'),PlayerStore(Path(folder)/'b.sqlite3')
         sa,sb=SharedSync(a,client()),SharedSync(b,client())
         player=None
         try:
             player=a.add_player('ENSAIO COMPARTILHADO FICTÍCIO')
+            if not args.emulator:
+                scope['player'] = global_id(a.outbox.installation_id, 'players', player)
             session=a.session(player)
             a.result(a.move(session,Event(2,3)),True)
             drain(sa); drain(sb)
@@ -100,7 +147,8 @@ def main():
                 def load(self, cfg): return token
                 def save(self, cfg, value): pass
             extra=b.session(foreign)
-            worker=SyncWorker(Path(folder)/'b.sqlite3',config,vault=SessionVault(),client_factory=lambda cfg: client())
+            # Reduz somente o intervalo deste ensaio; a configuração do usuário não muda.
+            worker=SyncWorker(Path(folder)/'b.sqlite3',replace(config, sync_interval_seconds=5),vault=SessionVault(),client_factory=lambda cfg: client())
             worker.start()
             try:
                 deadline=time.monotonic()+45
@@ -111,6 +159,19 @@ def main():
                 drain(sa)
                 assert a.db.execute('SELECT count(*) FROM sessions WHERE player=?',(player,)).fetchone()[0]==3
                 print('OK: trabalhador em segundo plano envia sessão e consulta mudanças automaticamente.')
+                a.rename_player(player, 'ALTERAÇÃO AUTOMÁTICA FICTÍCIA EM A')
+                drain(sa)
+                deadline=time.monotonic()+45
+                while time.monotonic()<deadline:
+                    if not worker.thread.is_alive():
+                        raise RuntimeError('Trabalhador encerrou durante a recepção automática.')
+                    row=b.db.execute('SELECT name FROM players WHERE id=?',(foreign,)).fetchone()
+                    if row and row['name']=='ALTERAÇÃO AUTOMÁTICA FICTÍCIA EM A':
+                        break
+                    time.sleep(.05)
+                else:
+                    raise RuntimeError('Instalação ociosa não recebeu a alteração remota automaticamente.')
+                print('OK: instalação ociosa recebe alteração de outra instalação sem consulta manual.')
             finally:
                 worker.stop(); worker.thread.join(15)
                 assert not worker.thread.is_alive()
