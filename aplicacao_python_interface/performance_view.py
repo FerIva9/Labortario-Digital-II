@@ -17,20 +17,20 @@ class PerformanceWindow:
         self.app = app
         self.window = tk.Toplevel(app.root)
         self.window.title('Acompanhamento · jogadores e sessões')
-        self.window.geometry('1180x760')
+        self.window.geometry(f'{min(1180, int(app.root.winfo_screenwidth() * .94))}x{min(760, int(app.root.winfo_screenheight() * .9))}')
         self.window.minsize(720, 520)
         self.window.protocol('WM_DELETE_WINDOW', self.close)
         self.events = queue.Queue()
         self.closed = False
         self.loading = False
-        self.source = 'Dados locais'
+        self.source = 'Histórico sincronizado / offline'
         self.snapshot = local_snapshot(app.store)
         self.current = None
-        self.status = tk.StringVar(value='Dados locais · nenhuma consulta ao Firebase realizada')
+        self.status = tk.StringVar(value='Histórico disponível neste computador · atualizado pela sincronização automática')
         toolbar = ttk.Frame(self.window, padding=10)
         toolbar.pack(fill='x')
-        ttk.Button(toolbar, text='Atualizar dados locais', command=self.load_local).pack(side='left')
-        self.remote_button = ttk.Button(toolbar, text='Consultar Firebase', command=self.load_remote)
+        ttk.Button(toolbar, text='Atualizar histórico disponível', command=self.load_local).pack(side='left')
+        self.remote_button = ttk.Button(toolbar, text='Consultar nuvem agora', command=self.load_remote)
         self.remote_button.pack(side='left', padx=8)
         ttk.Button(toolbar, text='Exportar jogadas filtradas (CSV)', command=self.export).pack(side='right')
         filters = ttk.Frame(self.window, padding=(10, 0))
@@ -115,7 +115,7 @@ class PerformanceWindow:
     def refresh_options(self):
         self.player_keys = {'Todos': None}
         for p in sorted(self.snapshot['players'], key=lambda p: (p['label'], identity(p))):
-            self.player_keys[f'{p["label"]} · {p["installation_id"]}/{p["player_id"]}'] = identity(p)
+            self.player_keys[f'{p["label"]} · {p["player_id"][:8]}'] = identity(p)
         self.combos[0]['values'] = list(self.player_keys)
         if self.player.get() not in self.player_keys:
             self.player.set('Todos')
@@ -126,7 +126,7 @@ class PerformanceWindow:
         self.session_keys = {'Todas': None}
         for s in sorted(self.snapshot['sessions'], key=lambda s: s['started_at'], reverse=True):
             if player is None or identity(s) == player:
-                self.session_keys[f'{s["started_at"]} · {s["installation_id"]}/{s["session_id"]}'] = identity(s, 'session_id')
+                self.session_keys[f'{datetime.fromisoformat(s["started_at"].replace("Z", "+00:00")).astimezone().strftime("%d/%m/%Y %H:%M")} · {s["session_id"][:8]}'] = identity(s, 'session_id')
         self.combos[1]['values'] = list(self.session_keys)
         if self.session.get() not in self.session_keys:
             self.session.set('Todas')
@@ -149,7 +149,7 @@ class PerformanceWindow:
         if self.loading:
             return
         self.snapshot = local_snapshot(self.app.store)
-        self.source = 'Dados locais'
+        self.source = 'Histórico sincronizado / offline'
         self.refresh_options()
         self.apply()
         self.status.set(f'Dados locais atualizados · {self.app.store.outbox.count()} documentos pendentes de envio')

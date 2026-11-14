@@ -3,6 +3,7 @@ import sqlite3
 from datetime import datetime
 from uuid import uuid4
 from cloud_outbox import CloudOutbox
+from cloud_replica import initialize, mapping, next_move_id
 
 
 def timestamp():
@@ -12,7 +13,7 @@ def timestamp():
 class PlayerStore:
     def __init__(self, path):
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(path)
+        self.db = sqlite3.connect(path, timeout=10)
         self.db.row_factory = sqlite3.Row
         self.db.executescript('''
             PRAGMA foreign_keys=ON;
@@ -22,6 +23,7 @@ class PlayerStore:
             CREATE INDEX IF NOT EXISTS idx_sessions_player ON sessions(player);
             CREATE INDEX IF NOT EXISTS idx_moves_session ON moves(session);
         ''')
+        initialize(self.db)
         self.outbox = CloudOutbox(self.db)
 
     def players(self):
@@ -67,8 +69,10 @@ class PlayerStore:
 
     def move(self, session, event):
         with self.db:
-            move = self.db.execute('INSERT INTO moves(session,time,story,character) VALUES (?,?,?,?)',
-                                   (session, timestamp(), event.story, event.character)).lastrowid
+            move = next_move_id(self.db)
+            self.db.execute('INSERT INTO moves(id,session,time,story,character) VALUES (?,?,?,?,?)',
+                            (move, session, timestamp(), event.story, event.character))
+            mapping(self, 'moves', move)
             self.outbox.changed_move(move)
             return move
 
@@ -82,7 +86,7 @@ class PlayerStore:
 
     def history(self, player):
         return self.db.execute('''SELECT m.*, s.started, s.id AS session_id FROM moves m
-            JOIN sessions s ON s.id=m.session WHERE s.player=? ORDER BY m.id''', (player,)).fetchall()
+            JOIN sessions s ON s.id=m.session WHERE s.player=? ORDER BY julianday(m.time), m.id''', (player,)).fetchall()
 
     def close(self):
         self.db.close()

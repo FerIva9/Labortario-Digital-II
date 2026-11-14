@@ -42,6 +42,9 @@ class CloudOutbox:
             if previous and previous[0] != destination and not allow_change:
                 raise ValueError('Este banco local já está vinculado a outro projeto/operador. Use a configuração original ou planeje uma migração.')
             if previous and previous[0] != destination:
+                if self.db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cloud_records'").fetchone():
+                    self.db.execute('UPDATE cloud_records SET version=NULL,base=NULL,seed_only=0')
+                self.db.execute("DELETE FROM cloud_meta WHERE key='legacy_imported_shared_v2'")
                 for row in self.db.execute('SELECT id FROM players').fetchall():
                     self.player(row['id'])
                 for row in self.db.execute('SELECT id FROM sessions').fetchall():

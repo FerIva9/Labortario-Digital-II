@@ -118,7 +118,7 @@ class RemoteListingTests(unittest.TestCase):
             if '/players?' in url:
                 return {'documents': [{'fields': {'player_id': {'stringValue': 'second'}}}]}
             return {}
-        data = self.client(transport).performance_documents()
+        data = self.client(transport).performance_documents(legacy_only=True)
         self.assertEqual(len(data['players']), 2)
         self.assertTrue(any('pageToken=page%2F2' in url for url in calls))
         self.assertTrue(all('/operators/operator/' in url for url in calls))

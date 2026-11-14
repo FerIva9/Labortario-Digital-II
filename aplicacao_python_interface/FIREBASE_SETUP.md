@@ -1,3 +1,5 @@
+> **Versão atual: sincronização bidirecional.** Após configurar o projeto, siga [SINCRONIZACAO_COMPARTILHADA.md](SINCRONIZACAO_COMPARTILHADA.md) e publique as regras desta versão.
+
 # IoT: sincronizar as estatísticas com o Firebase
 
 Guia da branch `iot-estatisticas`, revisado em **13/11/2026**. A integração está preparada no código. A criação do projeto, a publicação das regras e a habilitação da conta são feitas pelo responsável no Console. Os testes com o banco real ficam para depois dessa configuração.
@@ -63,8 +65,8 @@ Para o protótipo com poucos atendimentos, não há necessidade de trocar de ban
 
 - O intervalo padrão de verificação periódica é **60 segundos**. Novas pendências acordam o trabalhador antes desse prazo, com um breve agrupamento. O valor no JSON funciona como verificação de segurança, não como atraso obrigatório para sessões e resultados.
 - Os documentos utilizam IDs estáveis e snapshots completos, sem incrementar contadores a cada reenvio.
-- Não há listener em tempo real nem leitura contínua de coleções; sem pendências, só há consulta ao SQLite.
-- **HTTP 429 ou indicação RESOURCE_EXHAUSTED pausa o trabalhador**, sem novas tentativas contínuas. O jogo continua coletando localmente e a fila não é apagada.
+- Não há listener em tempo real: consultas incrementais verificam alterações remotas a cada 60 segundos, mesmo sem pendências locais.
+- **HTTP 429 ou indicação RESOURCE_EXHAUSTED preserva a fila** e aguarda 15 minutos entre tentativas automáticas. O jogo continua coletando localmente.
 - Confira Usage, aguarde o limite voltar a permitir operações e use **Nuvem → Configurar / conectar…** para retomar. A aplicação não consegue distinguir todas as causas de limite; armazenamento cheio, por exemplo, exige liberar espaço ou mudar a estratégia, e não apenas esperar um dia.
 - A pausa também pode ocorrer por um limite transitório de requisições. Esse comportamento conservador evita insistir no serviço quando ele solicita redução de uso.
 
@@ -75,7 +77,7 @@ Agrupar documentos em lotes ou aumentar o intervalo não elimina a contagem por 
 Há duas identidades diferentes:
 
 - **Responsável/operador:** conta autenticada no Firebase, com email, senha e UID. Controla o acesso à nuvem.
-- **Jogador:** perfil local da aplicação, com identificador próprio. Não precisa de email ou senha do Firebase.
+- **Jogador:** perfil compartilhado entre as aplicações do mesmo operador, com identificador próprio. Não precisa de email ou senha do Firebase.
 
 O código usa Firebase ID tokens via REST para que as Security Rules controlem o acesso. Não é necessário baixar uma chave privada de service account nem embutir credenciais administrativas no executável. A API key identifica o projeto; a autorização depende da conta e das regras. Referências: [Firestore REST e autorização](https://firebase.google.com/docs/firestore/use-rest-api), [Auth REST](https://firebase.google.com/docs/reference/rest/auth) e [API keys](https://firebase.google.com/docs/projects/api-keys).
 
@@ -194,108 +196,15 @@ A sincronização começa automaticamente e os registros permanecem no SQLite qu
 
 ## Painel de acompanhamento entre computadores
 
-Publique o conteúdo completo de `firebase/firestore.rules` no Console após
-atualizar o código. A rota `installations/{installation}` permite registrar e
-descobrir instalações usando apenas ID e versão do esquema, sem dados pessoais. As regras
-das subcoleções continuam limitadas ao operador habilitado e ao seu próprio UID.
+A tela inicial e o painel usam a base compartilhada do operador e recebem alterações pela sincronização automática. Para conferir diretamente o servidor, use **Acompanhamento → Consultar nuvem agora**. Publicação das regras, migração do histórico, exclusões e limites estão no [guia compartilhado](SINCRONIZACAO_COMPARTILHADA.md).
 
-Abra **Acompanhamento → Consultar Firebase**. São consultados jogadores, sessões
-e jogadas de todas as instalações desse operador, com paginação. Não há acesso
-a dados pertencentes a outros operadores; contas médicas distintas não recebem
-compartilhamento automaticamente nesta versão. O pacote distribuído representa
-a autorização do operador configurado e deve continuar privado.
+## 11. Base compartilhada, migração e funcionamento offline
 
-Os nomes cadastrados no SQLite são sincronizados no campo `label` do perfil.
-Assim, o computador do profissional obtém nome, sessões e estatísticas somente
-pelo Firebase. As regras aceitam rótulos de 1 a 80 caracteres, incluindo os
-códigos de versões anteriores. Nomes iguais não mesclam jogadores.
+As coleções atuais ficam em `operators/{UID}/installations/shared/{players|sessions|moves}/{ID_global}`, com `schema_version=2` e `updated_at` do servidor. A lista inicial, sessões e histórico são sincronizados automaticamente nos dois sentidos. A estrutura por instalação antiga é preservada como origem de migração.
 
-Após publicar as regras, abra a aplicação atualizada em cada computador de
-origem e aguarde a sincronização. A migração `player_names_v1` reenfileira os
-perfis existentes uma única vez, sem modificar sessões, jogadas ou exclusões
-pendentes. Depois atualize a consulta no computador do profissional. Se só houver
-o código remoto e o banco original tiver sido perdido, não há como deduzir o
-nome anterior. Atualize os demais computadores para que versões antigas não
-sobrescrevam nomes com códigos.
+O procedimento de atualização, a recuperação de históricos com fila antiga vazia, a cópia de segurança, as regras para conflitos/exclusões e os comandos de teste estão em [SINCRONIZACAO_COMPARTILHADA.md](SINCRONIZACAO_COMPARTILHADA.md). Esse guia substitui as orientações antigas de envio somente local → nuvem.
 
-Instalações de versões anteriores ainda não têm esse registro intermediário.
-Abra a versão atualizada em cada computador com sincronização habilitada, mesmo
-sem novas jogadas: seu índice será registrado e o histórico anterior passará a
-ser encontrado. Apenas copiar o `.exe` para o computador do profissional não
-registra automaticamente instalações antigas de outros computadores.
-
-O painel é uma leitura separada: não importa perfis remotos, não modifica
-documentos e não substitui o cadastro local. Dados ainda na fila offline de outro
-computador só aparecem após seu envio. Durante sincronização ativa, consultas de
-várias coleções podem mostrar estados parciais; atualize quando a fila zerar.
-
-O ensaio `tools/check_cloud_integration.py --run-live --saved-access` também testa
-a leitura usada pelo painel e a descoberta de instalações. Se retornar 403 na
-descoberta, confira a publicação das regras atualizadas no projeto correto.
-
-## 11. Onde os documentos aparecem
-
-```text
-operators/{UID}/installations/{INSTALLATION_ID}/
-    players/{PLAYER_ID}
-    sessions/{SESSION_ID}
-    moves/{MOVE_ID}
-```
-
-O ID da instalação é gerado uma vez e fica persistido no mesmo SQLite. Isso evita conflito entre números locais de jogada de computadores diferentes. Os documentos intermediários de instalação podem aparecer no Console como caminhos sem campos próprios; os dados ficam nas três subcoleções.
-
-| Coleção | Conteúdo |
-| --- | --- |
-| players | ID, nome/apelido no campo label e totais do jogador: apresentações, avaliações, acertos, erros e percentual. |
-| sessions | ID do jogador, início da sessão, totais e resumo por cada uma das quatro histórias. |
-| moves | Jogada individual: jogador, sessão, história, personagem, horário, resultado 0/1 ou null e horário do resultado. |
-
-Todos os documentos enviados têm `schema_version`, `installation_id` e `received_at`, sendo o último preenchido pelo relógio do servidor. `started_at`, `occurred_at` e `result_at` são timestamps originados no computador; seu relógio precisa estar correto para análises temporais. Uma apresentação sem R0/R1 tem resultado `null` e não reduz a taxa. Demonstrações continuam fora do banco de desempenho e, portanto, fora desse envio.
-
-A taxa é calculada localmente de forma consistente: `100 × acertos / avaliações`, com valor `null` se não houver avaliações. Os resumos por sessão permitem comparar atendimentos ao longo do tempo; as jogadas mantêm os dados detalhados para agregações futuras. Não são enviados CSVs, imagens ou dados de diagnóstico.
-
-## 12. Comportamento offline, exclusão e limites
-
-- Cada alteração dos dados locais e de sua fila usa a mesma transação SQLite. Se a gravação da fila falhar, a alteração local também é revertida.
-- A fila guarda o estado mais recente de cada documento. Não é um log imutável de todas as revisões do nome ou de cada tentativa de envio.
-- O trabalhador envia até 100 documentos por lote. A confirmação remove da fila somente a revisão enviada; uma atualização posterior continua pendente.
-- O transporte oferece novas tentativas e IDs estáveis. Uma resposta perdida pode resultar em escrita repetida do mesmo documento; os totais não são incrementados pela repetição.
-- Uma cópia parcial da nuvem pode ser visível enquanto há lotes pendentes. Para analisar o conjunto completo, espere o estado sem pendências.
-- Excluir um perfil também enfileira a exclusão de suas sessões e jogadas remotas. Offline, a cópia na nuvem continua existindo até a sincronização das exclusões. Se não voltar a conectar, as exclusões remotas não acontecerão.
-- Não exclua documentos manualmente no Console esperando que isso apague o SQLite. O fluxo desta versão é de envio local → nuvem; alterações remotas não retornam ao aplicativo.
-- Use uma única instância ativa da aplicação por banco SQLite. A coordenação de múltiplos escritores simultâneos para a mesma instalação não faz parte desta etapa.
-- Copiar o mesmo banco para dois computadores preserva o mesmo ID de instalação. Não os use simultaneamente como fontes independentes; isso pode fazer um sobrescrever os snapshots do outro. Instalações independentes devem ter bancos criados separadamente.
-- Restaurar um backup antigo de SQLite não reconcilia automaticamente documentos que só existem na nuvem. Restauração e migração devem ser planejadas separadamente.
-
-## 13. Testes nesta etapa e depois da sua configuração
-
-**Verificações locais:** testes com transporte substituído exercitam fila persistente, resumos, exclusões, migração dos dados existentes, revisão concorrente, falha de envio, vínculo de destino, payload Firestore e renovação de tokens. Não usam o seu projeto e não comprovam que regras, login e rede reais estão funcionando.
-
-Para reproduzir as verificações locais, na pasta da aplicação:
-
-```bash
-python3 -m unittest discover -s tests -v
-python3 tools/check_layout.py
-```
-
-**Depois de configurar o Firebase:** avise que concluiu os passos 4 a 9 e informe apenas o Project ID, o UID e se publicou as regras; os campos também podem ficar preenchidos localmente. Não envie senha, tokens ou chave privada na conversa. O primeiro ensaio deve usar perfis fictícios. Já foi preparado este roteiro:
-
-```bash
-python3 tools/check_cloud_integration.py --run-live
-```
-
-Esse comando só deve ser executado após a configuração. Solicita email e senha no terminal, ou usa o acesso salvo com `--saved-access`, e cria dados fictícios em duas instalações temporárias. Testa nome e renomeação no painel remoto, sessões, taxa de 50%, apresentações sem resultado, separação de IDs repetidos entre instalações, bloqueio sem autenticação e de outro UID e exclusão dos dados de teste. Não carrega seu banco local real. Sem `--run-live`, não faz requisições.
-
-A limpeza ocorre no final; se a rede falhar durante a limpeza, o roteiro informa o caminho exato da instalação temporária para conferência no Console. O projeto pode consumir uma pequena quantidade de operações reais durante esse ensaio.
-
-Depois desse ensaio controlado, validar na interface:
-
-1. Coletar uma jogada real com R1 e outra com R0, conferindo identificadores e taxa no SQLite/Firestore.
-2. Desligar a internet após autenticar; coletar dados e conferir pendências sem travar a interface.
-3. Após lembrar o acesso no cofre, fechar e abrir offline; verificar a preservação local e a retomada automática quando a rede voltar.
-4. Conferir que o reenvio mantém os IDs e não duplica os registros.
-5. Excluir um perfil fictício offline, restabelecer a rede e confirmar remoção remota após a retomada automática.
-6. Validar o novo executável Windows e a conexão serial física. Os testes gráficos em Linux não substituem essa etapa.
+Sem as novas regras publicadas, o aplicativo continua coletando offline e avisa a recusa do servidor. Atualize todos os computadores; versões antigas não participam da troca contínua da base compartilhada.
 
 ## 14. Diagnóstico de problemas
 
@@ -307,7 +216,7 @@ Depois desse ensaio controlado, validar na interface:
 | Acesso negado / HTTP 403 | Regras publicadas; enabled boolean true; UID; API habilitada e configuração da chave. |
 | HTTP 404 antes do envio | Project ID, criação do Firestore `(default)` e documento operators/UID. |
 | Falha HTTPS | Acesso à internet, certificados, proxy e horário do computador. A validação TLS permanece habilitada. |
-| HTTP 429 / RESOURCE_EXHAUSTED | Sincronização pausada, fila preservada. Consultar Usage e reconectar após restabelecer a cota; não habilitar faturamento. |
+| HTTP 429 / RESOURCE_EXHAUSTED | Fila preservada, nova tentativa automática em 15 minutos. Consultar Usage; não habilitar faturamento. |
 | Fila não zera | Consultar Detalhes; corrigir erro permanente e reconectar. Pausa preserva os dados. |
 | Outro projeto/operador bloqueado | Retomada automática encontrou destino diferente do vínculo local. Configure e autentique explicitamente o novo destino pelo menu. |
 | Aparece código em vez do nome | Publique as regras atuais, atualize a aplicação na origem, aguarde a sincronização dos perfis e consulte novamente. O nome não pode ser deduzido de um código antigo sem a origem. |

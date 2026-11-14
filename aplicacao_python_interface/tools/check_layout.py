@@ -129,6 +129,44 @@ for scale in (1.33, 1.67, 2.0, 2.67):
     assert not app.store.history(old_player)
     assert str(app.start_session_button['state']) == 'disabled'
     assert str(app.profile_options['state']) == 'disabled'
+    if scale == 1.33:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tests'))
+        from shared_fixture import SharedServer
+        from player_store import PlayerStore
+        from cloud_replica import SharedSync
+        server = SharedServer()
+        foreign = PlayerStore(Path(temporary.name) / 'foreign.sqlite3')
+        try:
+            local_sync = SharedSync(app.store, server.client())
+            foreign_sync = SharedSync(foreign, server.client())
+            other_player = foreign.add_player('Jogador de outro computador')
+            remote_session = foreign.session(other_player)
+            foreign.result(foreign.move(remote_session, Event(2, 3)), True)
+            foreign_sync.cycle()
+            local_sync.cycle()
+            app.refresh_shared_data()
+            imported = app.store.players()[0]['id']
+            assert app.login_players.exists(imported)
+            app.login_players.selection_set(imported)
+            app.choose_player()
+            app.new_session()
+            local_sync.cycle()
+            foreign.rename_player(other_player, 'Nome alterado remotamente')
+            foreign_sync.cycle()
+            local_sync.cycle()
+            app.refresh_shared_data()
+            assert app.active_player_label.cget('text') == 'Nome alterado remotamente'
+            foreign.delete_player(other_player)
+            foreign_sync.cycle()
+            local_sync.cycle()
+            app.refresh_shared_data()
+            root.update()
+            assert app.session_id is None and app.login_view.winfo_ismapped()
+            assert not app.login_players.exists(imported)
+            assert 'outro computador' in app.login_feedback.get()
+            print('OK: jogador remoto na tela inicial, nome atualizado durante sessão e exclusão remota segura.', flush=True)
+        finally:
+            foreign.close()
     for job in root.tk.call('after', 'info'):
         root.after_cancel(job)
     app.close()

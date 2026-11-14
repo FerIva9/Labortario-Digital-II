@@ -18,10 +18,11 @@ from runtime_paths import cloud_config_path, cloud_defaults_path
 
 
 class FirebaseError(Exception):
-    def __init__(self, message, *, retryable=False, status=None):
+    def __init__(self, message, *, retryable=False, status=None, code=None):
         super().__init__(message)
         self.retryable = retryable
         self.status = status
+        self.code = code
 
 
 @dataclass(frozen=True)
@@ -79,8 +80,8 @@ def firestore_value(value, field=None):
             raise ValueError('Número não finito na fila de sincronização.')
         return {'doubleValue': value}
     if isinstance(value, str):
-        if field in {'started_at', 'occurred_at', 'result_at'}:
-            datetime.fromisoformat(value)  # Valida o formato mantido pelo banco local.
+        if field in {'started_at', 'occurred_at', 'result_at', 'updated_at'}:
+            datetime.fromisoformat(value.replace('Z', '+00:00'))  # Valida o formato mantido pelo banco local.
             return {'timestampValue': value}
         return {'stringValue': value}
     if isinstance(value, dict):
@@ -142,7 +143,7 @@ def request_json(method, url, payload=None, token=None, *, form=False):
             message = {401: 'Sessão Firebase inválida. Conecte novamente.',
                        403: 'Acesso negado. Confira as regras, o UID, a autorização do operador e as APIs habilitadas.',
                        404: 'Documento ou banco não encontrado. Confira o projeto e o banco (default).' }.get(status, f'Firebase retornou HTTP {status}. Confira a configuração.')
-        raise FirebaseError(message, retryable=status >= 500, status=status) from None
+        raise FirebaseError(message, retryable=status >= 500, status=status, code=service_status) from None
     except (URLError, TimeoutError, OSError):
         raise FirebaseError('Sem acesso HTTPS ao Firebase. Confira a internet, certificados e proxy.', retryable=True) from None
     except (ValueError, UnicodeError):
@@ -166,7 +167,7 @@ class FirestoreClient:
         except FirebaseError as error:
             status = f'HTTP {error.status}: ' if error.status else ''
             raise FirebaseError(f'{stage} — {status}{error}',
-                                retryable=error.retryable, status=error.status) from None
+                                retryable=error.retryable, status=error.status, code=error.code) from None
 
     def sign_in(self, email, password):
         result = self._request('Login Firebase', 'POST', 'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?' + urlencode({'key': self.config.api_key}),
@@ -220,7 +221,7 @@ class FirestoreClient:
         writes = []
         for item in items:
             path = self.document_path(installation, item['entity'], item['record_id'])
-            name = self.base.removeprefix('https://firestore.googleapis.com/v1/') + '/' + path
+            name = self.base.split('/v1/', 1)[1] + '/' + path
             if item['operation'] == 'delete':
                 writes.append({'delete': name})
             else:
@@ -275,8 +276,24 @@ class FirestoreClient:
         self._request('Limpeza do registro da instalação de teste', 'DELETE', self.base + '/' + path, token=self.token())
         self._registered_installations.discard(installation)
 
-    def performance_documents(self, installation=None):
+    def performance_documents(self, installation=None, *, legacy_only=False):
         """Consulta apenas instalações do operador autenticado, sem importar no SQLite."""
+        if not legacy_only and installation is None:
+            from cloud_replica import decode_documents
+            docs, _ = self.shared_changes({})
+            decoded = decode_documents(docs)
+            if any(decoded.values()):
+                result = {entity: [] for entity in ('players', 'sessions', 'moves')}
+                alive_players = {key for key, (data, _) in decoded['players'].items() if not data['deleted']}
+                alive_sessions = {key for key, (data, _) in decoded['sessions'].items()
+                                  if not data['deleted'] and data['player_id'] in alive_players}
+                for entity in result:
+                    for key, (data, _) in decoded[entity].items():
+                        if data['deleted'] or (entity != 'players' and data['player_id'] not in alive_players) or (entity == 'moves' and data['session_id'] not in alive_sessions):
+                            continue
+                        value = dict(data, schema_version=1, installation_id='shared')
+                        result[entity].append({'fields': {k: firestore_value(v, k) for k, v in value.items()}})
+                return result
         parent = f'operators/{self.config.operator_uid}/installations'
         if installation:
             self.document_path(installation, 'players', 'validation')
@@ -286,10 +303,56 @@ class FirestoreClient:
                              for doc in self.list_documents(parent)]
         result = {entity: [] for entity in ('players', 'sessions', 'moves')}
         for identifier in installations:
+            if identifier == 'shared':
+                continue
             self.document_path(identifier, 'players', 'validation')
             for entity in result:
                 result[entity].extend(self.list_documents(f'{parent}/{identifier}/{entity}'))
         return result
+
+
+    def shared_changes(self, cursors):
+        """Consulta incremental com relógio do servidor, inclusive limites iguais."""
+        documents, updated = {}, dict(cursors)
+        parent = self.base + f'/operators/{self.config.operator_uid}/installations/shared'
+        for entity in ('players', 'sessions', 'moves'):
+            query = {'from': [{'collectionId': entity}]}
+            if cursors.get(entity):
+                query['where'] = {'fieldFilter': {'field': {'fieldPath': 'updated_at'},
+                                'op': 'GREATER_THAN_OR_EQUAL', 'value': {'timestampValue': cursors[entity]}}}
+            rows = self._request('Leitura da base compartilhada (publique firebase/firestore.rules)',
+                                 'POST', parent + ':runQuery', {'structuredQuery': query}, token=self.token())
+            documents[entity] = [row['document'] for row in rows if 'document' in row]
+            times = [row['readTime'] for row in rows if row.get('readTime')]
+            if times:
+                from performance_data import parse_time
+                updated[entity] = min(times, key=parse_time)
+        return documents, updated
+
+    def commit_shared(self, items):
+        if not items:
+            return []
+        if len(items) > 100:
+            raise ValueError('Use lotes de até 100 documentos.')
+        writes = []
+        for item in items:
+            path = self.document_path('shared', item['entity'], item['remote_id'])
+            name = self.base.split('/v1/', 1)[1] + '/' + path
+            fields = {k: firestore_value(v, k) for k, v in item['data'].items() if k != 'updated_at'}
+            writes.append({'update': {'name': name, 'fields': fields},
+                           'updateTransforms': [{'fieldPath': 'updated_at', 'setToServerValue': 'REQUEST_TIME'}],
+                           'currentDocument': {'updateTime': item['version']} if item['version'] else {'exists': False}})
+        try:
+            response = self._request('Atualização da base compartilhada (publique firebase/firestore.rules)', 'POST', self.base + ':commit',
+                                     {'writes': writes}, token=self.token())
+        except FirebaseError as error:
+            if error.status in (409, 412) or error.code in ('FAILED_PRECONDITION', 'ABORTED', 'ALREADY_EXISTS'):
+                raise FirebaseError('Outro computador atualizou os dados. Reconciliando automaticamente.', retryable=True, status=error.status) from None
+            raise
+        results = response.get('writeResults', [])
+        if len(results) != len(items) or any(not row.get('updateTime') for row in results):
+            raise FirebaseError('Confirmação remota incompleta; pendências preservadas.', retryable=True)
+        return [row['updateTime'] for row in results]
 
 
 def sync_once(store, client):
@@ -305,7 +368,7 @@ def sync_once(store, client):
 class SyncWorker:
     """Sincroniza em segundo plano com autenticação persistida no cofre do SO."""
     def __init__(self, db_path, config, email=None, password=None, *, remember=False,
-                 vault=None, allow_rebind=False, forget_saved=False):
+                 vault=None, allow_rebind=False, forget_saved=False, client_factory=None):
         self.db_path, self.config = db_path, config
         self._email, self._password = email, password
         self.remember = remember
@@ -313,6 +376,7 @@ class SyncWorker:
         self.vault = vault if vault is not None else PortableVault()
         self.allow_rebind = allow_rebind
         self.forget_saved = forget_saved
+        self.client_factory = client_factory
         self.events = queue.Queue()
         self._stop = threading.Event()
         self._wake = threading.Event()
@@ -373,6 +437,10 @@ class SyncWorker:
                         self._credential_notice = ' · acesso antigo não pôde ser removido do cofre'
                 return True
             except FirebaseError as error:
+                if error.status == 429 or 'cota' in str(error).lower():
+                    self.events.put('Modo offline · limite de autenticação atingido. Nova tentativa em 15 minutos.')
+                    self._stop.wait(900)
+                    continue
                 if not error.retryable:
                     raise
                 self.events.put(f'Modo local · {error} Reconexão automática pendente.')
@@ -384,7 +452,7 @@ class SyncWorker:
         store = None
         try:
             self.events.put('Conectando automaticamente ao Firebase…')
-            client = FirestoreClient(self.config)
+            client = (self.client_factory or FirestoreClient)(self.config)
             if not self._authenticate(client) or self._stop.is_set():
                 return
             store = PlayerStore(self.db_path)
@@ -393,15 +461,19 @@ class SyncWorker:
             else:
                 store.outbox.bind(self.config.project_id, self.config.operator_uid)
             backoff = 3
+            from cloud_replica import SharedSync
+            replica = SharedSync(store, client)
             while not self._stop.is_set():
                 try:
                     if self._remember_requested.is_set():
                         self._remember_requested.clear()
                         client.on_refresh_token = self._save_token
                         self._save_token(client._refresh_token)
-                    sent = sync_once(store, client)
+                    sent, changed = replica.cycle()
+                    if changed:
+                        self.events.put({"kind": "data_changed"})
                     pending = store.outbox.count()
-                    status = f'Sincronizando · {pending} pendências' if pending else 'Nuvem em dia · sem pendências'
+                    status = f'Sincronizando · {pending} pendências' if pending else 'Nuvem em dia · jogadores e histórico atualizados'
                     self.events.put(status + self._credential_notice)
                     backoff = 3
                     if not sent or not pending:
@@ -412,6 +484,14 @@ class SyncWorker:
                             self._stop.wait(.35)
                 except FirebaseError as error:
                     if not error.retryable:
+                        if error.status == 429 or 'cota' in str(error).lower():
+                            self.events.put('Modo offline · cota Firebase atingida. Nova tentativa automática em 15 minutos.')
+                            self._stop.wait(900)
+                            continue
+                        if error.status == 403:
+                            self.events.put(f'Modo offline · {error} Nova tentativa automática em 5 minutos.')
+                            self._stop.wait(300)
+                            continue
                         raise
                     self.events.put(f'Modo local · {error} Reconexão automática pendente.')
                     self._stop.wait(backoff)

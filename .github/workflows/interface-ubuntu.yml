@@ -1,4 +1,4 @@
-name: Interface Ubuntu
+name: Interface Linux e Windows
 
 on:
   push:
@@ -33,3 +33,39 @@ jobs:
         run: xvfb-run -a .venv/bin/python tools/check_layout.py
       - name: Painel de acompanhamento
         run: xvfb-run -a .venv/bin/python tools/check_performance.py
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: aplicacao_python_interface
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Dependências Python
+        run: python -m pip install -r requirements-build.txt
+      - name: Testes locais e interface nativa
+        run: |
+          python -m unittest discover -s tests -v
+          python tools/check_layout.py
+          python tools/check_performance.py
+      - name: Preparar acesso inteiramente fictício para testar o empacotamento
+        run: >-
+          python -c "from cloud_firebase import CloudConfig; from cloud_portable import write_access;
+          from runtime_paths import cloud_defaults_path;
+          cfg=CloudConfig('projeto-teste','chave-ficticia','operador-ficticio');
+          cfg.save(cloud_defaults_path()); write_access(cfg,'token-ficticio-sem-acesso-real')"
+      - name: Gerar executável com pacote de teste
+        run: python tools/build_windows.py
+      - name: Verificar executável fora da pasta de origem, sem pasta privada externa
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'fabula-isolado'
+          New-Item -ItemType Directory -Force $target | Out-Null
+          Copy-Item dist/FabulaTEA.exe $target
+          $report = Join-Path $target 'diagnostico.txt'
+          $process = Start-Process -FilePath (Join-Path $target 'FabulaTEA.exe') -ArgumentList '--check-ui', $report -Wait -PassThru
+          Get-Content $report
+          if ($process.ExitCode -ne 0) { throw 'Diagnóstico do executável falhou.' }

@@ -1,5 +1,7 @@
 # Fábula TEA + — interface Python
 
+**Atualização: base compartilhada entre computadores.** Antes de usar esta versão, publique as regras atualizadas e siga [SINCRONIZACAO_COMPARTILHADA.md](SINCRONIZACAO_COMPARTILHADA.md). A lista inicial e o histórico agora são sincronizados nos dois sentidos, com cópia offline e recuperação do histórico antigo.
+
 Veja [ARQUITETURA.md](ARQUITETURA.md) para o caminho dos dados, a distribuição
 do executável com Firebase e a diferença de protocolo da Semana4: essa versão
 da FPGA envia apresentações, mas ainda não transmite os resultados R0/R1.
@@ -24,7 +26,7 @@ interface em modo local; também é possível configurar o acesso pelo menu Nuve
 Sem cofre seguro no Ubuntu, um login marcado para lembrar cria automaticamente
 um arquivo privado criptografado; também é possível transferir a autorização
 preparada. A senha não é gravada. A porta serial exige permissão do usuário (normalmente o grupo
-`dialout`, após sair e entrar na sessão). O workflow `Interface Ubuntu` testa
+`dialout`, após sair e entrar na sessão). O workflow `Interface Linux e Windows` testa
 a lógica e a interface em tela virtual sem credenciais Firebase.
 
 ### Diagnóstico do executável
@@ -67,11 +69,7 @@ desempenho. O início da sessão é manual e a última apresentação não repre
 automaticamente seu encerramento; não são inferidos duração de rodada ou tempo
 de resposta. As métricas descrevem o jogo e não fornecem diagnóstico clínico.
 
-**Atualizar dados locais** lê o SQLite deste computador. **Consultar Firebase**
-consulta todas as instalações do mesmo operador, em segundo plano, mantendo o
-painel anterior se houver erro. A leitura remota não modifica o banco local e
-mostra os nomes cadastrados, vinculados aos IDs de jogador e instalação. A visão é atualizada
-sob demanda e pode estar parcial enquanto outro computador ainda sincroniza.
+**Atualizar histórico disponível** lê a cópia compartilhada já armazenada no computador. A sincronização automática recebe alterações de outros computadores e atualiza a tela inicial e o painel. **Consultar nuvem agora** permite conferir diretamente o Firebase. Sem conexão, ficam disponíveis os dados baixados e as novas pendências locais.
 
 Antes da primeira consulta geral, publique **todo o arquivo
 `firebase/firestore.rules`** no Console. A conexão deve estar salva pelo menu
@@ -190,7 +188,7 @@ No executável, os CSVs ficam em **`%LOCALAPPDATA%\FabulaTEA\registros`**. Para 
 
 Para alterar somente nomes ou associações sem recompilar, coloque uma cópia de `historias.json` ao lado do `.exe` e edite-a. Para imagens próprias, coloque também a pasta `assets` com os arquivos referenciados ao lado do executável. A aplicação usa essas imagens quando existem e procura as demais no pacote interno. Reinicie após as alterações. Um catálogo externo tem prioridade sobre o catálogo embutido: atualize ou remova essa cópia se quiser usar o catálogo de uma nova compilação.
 
-O executável e seu diagnóstico foram verificados no Windows, inclusive fora da pasta do código. Após distribuir, confira as imagens, os registros e a recepção com a placa física. A execução nativa em Ubuntu deve ser conferida no Linux; há verificações locais e gráficas no workflow Ubuntu.
+Versões anteriores do executável foram verificadas no Windows. A versão compartilhada atual possui verificação nativa automatizada de empacotamento no workflow; sua execução deve ser conferida no Windows após gerar. Após distribuir, confira as imagens, os registros e a recepção com a placa física. A lógica, a interface e a integração com o emulador Firestore foram verificadas no Linux; a placa física requer bancada.
 
 ## Apresentação somente do personagem
 
@@ -202,7 +200,7 @@ A janela inicial se ajusta ao tamanho da tela, usa Segoe UI no Windows e permite
 
 `windows.manifest` declara a escala de DPI do sistema para o executável; ao rodar o código diretamente, `windows_display.py` configura isso antes de criar a janela. Não é necessário reduzir a escala do Windows para usar o aplicativo. A escala é a do sistema no início da execução; mudanças de escala durante o uso podem exigir reiniciar o aplicativo. Inclua `ui_layout.py`, `windows_display.py` e `windows.manifest` ao copiar o código para recompilar no Windows.
 
-Verificação gráfica opcional: `python tools/check_layout.py`. O script abre janelas temporárias para conferir três tamanhos (1240×900, 1024×650 e 800×600) em quatro escalas de fontes, incluindo galeria, limites dos controles, redimensionamento, apresentação em tela cheia e recepção fragmentada de R1/R0. As verificações atuais foram executadas no Windows; o workflow Ubuntu executa o mesmo roteiro em uma tela virtual Linux.
+Verificação gráfica opcional: `python tools/check_layout.py`. O script abre janelas temporárias para conferir três tamanhos (1240×900, 1024×650 e 800×600) em quatro escalas de fontes, incluindo galeria, limites dos controles, redimensionamento, apresentação em tela cheia e recepção fragmentada de R1/R0. O roteiro atualizado foi executado no Linux e está configurado no workflow para Ubuntu e Windows.
 
 ## Jogadores e acompanhamento
 
@@ -211,7 +209,7 @@ Verificação gráfica opcional: `python tools/check_layout.py`. O script abre j
 3. Clique em **Ver desempenho do jogador** para consultar a taxa global, acertos/erros, sessão atual e evolução por tema, data e sessão. A taxa é `acertos / jogadas com R0 ou R1`; demonstrações e apresentações sem resultado ficam fora do cálculo. As datas preservam o horário local e fuso registrados.
 4. Use **Exportar histórico do jogador (CSV)** para obter todas as apresentações reais do perfil, com sessão, horário, história, personagem e resultado (`0`, `1` ou vazio quando não recebido).
 
-Use **Encerrar sessão / trocar jogador** para voltar à tela inicial. A aplicação desconecta a placa, preserva o histórico salvo e limpa os cartões e registros visuais da sessão anterior. Escolha um perfil e clique em **Iniciar sessão** para outro atendimento. A tela inicial é uma seleção de perfis locais, sem senha. Perfis e jogadas ficam em `registros/jogadores.sqlite3`, ou `%LOCALAPPDATA%\FabulaTEA\registros\jogadores.sqlite3` no executável Windows. Faça backup desse arquivo com o aplicativo fechado. Os dados são mantidos localmente; o envio opcional ao Firebase depende da conexão pelo menu Nuvem. Prefira apelidos quando apropriado.
+Use **Encerrar sessão / trocar jogador** para voltar à tela inicial. A aplicação desconecta a placa, preserva o histórico salvo e limpa os cartões e registros visuais da sessão anterior. Escolha um perfil e clique em **Iniciar sessão** para outro atendimento. A tela inicial seleciona perfis compartilhados do operador, sem senha individual de jogador, usando a cópia local quando offline. Perfis e jogadas ficam em `registros/jogadores.sqlite3`, ou `%LOCALAPPDATA%\FabulaTEA\registros\jogadores.sqlite3` no executável Windows. Faça backup desse arquivo com o aplicativo fechado. Os dados são mantidos localmente; o envio opcional ao Firebase depende da conexão pelo menu Nuvem. Prefira apelidos quando apropriado.
 
 **Limpar histórico visual** não remove os dados do jogador. Os CSVs antigos de apresentações são preservados; como não contêm jogador nem resultado, não são importados automaticamente nas estatísticas. Os novos resultados persistem no SQLite e na exportação por jogador; os CSVs de sessão anteriores continuam como registros de apresentações. As estatísticas descrevem o desempenho no jogo e não representam uma avaliação clínica.
 
@@ -285,8 +283,8 @@ Para preparar o acesso sem redigitar credenciais:
 
 A sincronização começa automaticamente e os registros permanecem no SQLite quando a rede falha. O pacote não transporta o histórico de pacientes: cada instalação mantém seu banco e identificador próprios. Cotas e pausas do plano gratuito permanecem iguais. Tokens podem ser revogados; nesse caso, conecte novamente ou refaça a preparação. Referência: [sessões Firebase](https://firebase.google.com/docs/auth/admin/manage-sessions).
 
-Os nomes ou apelidos cadastrados são enviados no perfil do jogador; a nuvem também recebe sessões, jogadas e resumos, incluindo exclusões. O envio é local → nuvem. O painel Acompanhamento consulta outras instalações do mesmo operador sem importar seus cadastros para o SQLite local. A primeira autenticação também publica o histórico pendente existente.
+Os nomes ou apelidos cadastrados são enviados no perfil do jogador; a nuvem também recebe sessões, jogadas e resumos, incluindo exclusões. A sincronização é bidirecional: o SQLite mantém a cópia offline da base compartilhada do operador. A lista inicial e o histórico são atualizados automaticamente. A primeira autenticação também publica o histórico pendente existente.
 
-Para manter o uso no plano gratuito, mantenha o projeto no Spark sem conta de faturamento vinculada. O programa não verifica o plano do projeto. A sincronização reage às pendências e usa 60 segundos como verificação periódica; HTTP 429/RESOURCE_EXHAUSTED pausa o envio com a fila preservada. Não há habilitação de cobrança ou migração de plano pela aplicação.
+Para manter o uso no plano gratuito, mantenha o projeto no Spark sem conta de faturamento vinculada. O programa não verifica o plano do projeto. A sincronização reage às pendências e usa 60 segundos como verificação periódica; HTTP 429/RESOURCE_EXHAUSTED preserva a fila e aguarda 15 minutos antes de uma nova tentativa automática. Não há habilitação de cobrança ou migração de plano pela aplicação.
 
-Os testes unitários usam transporte e cofre substituídos. O roteiro `python tools/check_cloud_integration.py --run-live --saved-access` testa o Firebase real com instalações fictícias, incluindo trabalhador automático, sessões vazias, atualização posterior com R1/R0 e retomada com acesso salvo; remove os dados ao final. Sem `--run-live`, não faz requisições. O diagnóstico do `.exe` inclui esse ensaio e o painel. O workflow Ubuntu executa os testes locais e gráficos sem credenciais reais; não substitui a verificação de uma placa física ou de uma conexão Firebase real em Ubuntu.
+Os testes unitários usam transporte e cofre substituídos. O roteiro `python tools/check_cloud_integration.py --run-live --saved-access` testa o Firebase real com instalações fictícias, incluindo trabalhador automático, sessões vazias, atualização posterior com R1/R0 e retomada com acesso salvo; remove os dados ao final. Sem `--run-live` ou `--emulator`, não faz requisições. O diagnóstico do `.exe` inclui esse ensaio e o painel. O workflow Ubuntu executa os testes locais e gráficos sem credenciais reais; não substitui a verificação de uma placa física ou de uma conexão Firebase real em Ubuntu.

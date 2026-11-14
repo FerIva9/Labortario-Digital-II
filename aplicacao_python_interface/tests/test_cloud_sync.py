@@ -53,20 +53,18 @@ class OutboxTests(unittest.TestCase):
         self.assertEqual(self.store.outbox.count(), 0)
         self.assertEqual(client.commit.call_args_list[0], client.commit.call_args_list[1])
 
-    def test_quota_pauses_worker_and_preserves_outbox(self):
-        self.store.add_player('Teste de cota')
-        before = self.store.outbox.pending()
-        client = Mock()
-        client.commit.side_effect = FirebaseError('Limite de cota atingido', status=429)
-        worker = SyncWorker(self.path, CONFIG, 'email-ficticio', 'senha-ficticia')
+    def test_quota_waits_without_busy_retry_and_preserves_outbox(self):
+        from shared_fixture import SharedServer
+        self.store.add_player('Teste')
+        client = SharedServer().client()
+        client.commit_shared = Mock(side_effect=FirebaseError('cota atingida', status=429))
+        worker = SyncWorker(Path(self.store.db.execute('PRAGMA database_list').fetchone()['file']), CONFIG, 'email', 'senha')
+        worker._stop.wait = Mock(side_effect=lambda seconds: worker.stop())
         with patch('cloud_firebase.FirestoreClient', return_value=client):
             worker.run()
-        self.assertEqual(client.commit.call_count, 1)
-        self.assertEqual(self.store.outbox.pending(), before)
-        messages = []
-        while not worker.events.empty():
-            messages.append(worker.events.get_nowait())
-        self.assertTrue(any('Sincronização pausada' in message for message in messages))
+        self.assertEqual(client.commit_shared.call_count,1)
+        worker._stop.wait.assert_called_once_with(900)
+        self.assertGreater(self.store.outbox.count(),0)
         self.assertIsNone(worker._password)
 
     def test_old_ack_preserves_newer_revision(self):

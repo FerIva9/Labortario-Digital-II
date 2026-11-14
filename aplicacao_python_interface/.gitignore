@@ -30,3 +30,6 @@ firebase_defaults.tmp
 .firebase-bootstrap/
 access.key
 access.enc
+
+# Cópias de segurança anteriores à migração compartilhada.
+*.pre-compartilhado.sqlite3

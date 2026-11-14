@@ -16,17 +16,17 @@ service cloud.firestore {
               && d.accuracy_percent >= 0 && d.accuracy_percent <= 100));
     }
     function validPlayer(d, id) {
-      return d.keys().hasAll(['schema_version', 'installation_id', 'received_at', 'player_id', 'label',
+      return d.keys().hasAll(['schema_version', 'installation_id', 'player_id', 'label',
           'presentations_count', 'evaluated_count', 'correct_count', 'error_count', 'accuracy_percent'])
-        && d.keys().hasOnly(['schema_version', 'installation_id', 'received_at', 'player_id', 'label',
+        && d.keys().hasOnly(['schema_version', 'installation_id', 'received_at', 'updated_at', 'deleted', 'player_id', 'label',
           'presentations_count', 'evaluated_count', 'correct_count', 'error_count', 'accuracy_percent'])
         && d.player_id == id && d.label is string
         && d.label.size() >= 1 && d.label.size() <= 80 && stats(d);
     }
     function validSession(d, id) {
-      return d.keys().hasAll(['schema_version', 'installation_id', 'received_at', 'session_id', 'player_id',
+      return d.keys().hasAll(['schema_version', 'installation_id', 'session_id', 'player_id',
           'started_at', 'presentations_count', 'evaluated_count', 'correct_count', 'error_count', 'accuracy_percent', 'by_story'])
-        && d.keys().hasOnly(['schema_version', 'installation_id', 'received_at', 'session_id', 'player_id',
+        && d.keys().hasOnly(['schema_version', 'installation_id', 'received_at', 'updated_at', 'deleted', 'session_id', 'player_id',
           'started_at', 'presentations_count', 'evaluated_count', 'correct_count', 'error_count', 'accuracy_percent', 'by_story'])
         && d.session_id == id && d.player_id is string && d.started_at is timestamp && stats(d)
         && d.by_story is map && d.by_story.keys().hasAll(['0','1','2','3'])
@@ -34,15 +34,28 @@ service cloud.firestore {
         && stats(d.by_story['0']) && stats(d.by_story['1']) && stats(d.by_story['2']) && stats(d.by_story['3']);
     }
     function validMove(d, id) {
-      return d.keys().hasAll(['schema_version', 'installation_id', 'received_at', 'move_id', 'session_id', 'player_id',
+      return d.keys().hasAll(['schema_version', 'installation_id', 'move_id', 'session_id', 'player_id',
           'occurred_at', 'story', 'character', 'result', 'result_at'])
-        && d.keys().hasOnly(['schema_version', 'installation_id', 'received_at', 'move_id', 'session_id', 'player_id',
+        && d.keys().hasOnly(['schema_version', 'installation_id', 'received_at', 'updated_at', 'deleted', 'move_id', 'session_id', 'player_id',
           'occurred_at', 'story', 'character', 'result', 'result_at'])
         && d.move_id == id && d.session_id is string && d.player_id is string
         && d.occurred_at is timestamp && d.story is int && d.story >= 0 && d.story <= 3
         && d.character is int && d.character >= 0 && d.character <= 5
         && (d.result == null || (d.result is int && (d.result == 0 || d.result == 1)))
         && ((d.result == null && d.result_at == null) || (d.result != null && d.result_at is timestamp));
+    }
+    // Tombstones duráveis impedem que uma cópia offline restaure registros excluídos.
+    function sharedValid(d, collection, id) {
+      return d.schema_version == 2 && d.updated_at == request.time && d.deleted is bool
+        && ((d.deleted == true
+          && ((collection == 'players' && d.keys().hasOnly(['schema_version','deleted','updated_at','player_id']) && d.player_id == id)
+            || (collection == 'sessions' && d.keys().hasOnly(['schema_version','deleted','updated_at','session_id']) && d.session_id == id)
+            || (collection == 'moves' && d.keys().hasOnly(['schema_version','deleted','updated_at','move_id']) && d.move_id == id)))
+          || (d.deleted == false && d.installation_id is string
+            && !d.keys().hasAny(['received_at'])
+            && ((collection == 'players' && validPlayer(d,id))
+              || (collection == 'sessions' && validSession(d,id))
+              || (collection == 'moves' && validMove(d,id)))));
     }
     match /operators/{uid} {
       // Documento habilitado manualmente pelo administrador no Firebase Console.
@@ -59,14 +72,20 @@ service cloud.firestore {
         allow delete: if authorized(uid);
       }
       match /installations/{installation}/{collection}/{id} {
-        allow read, delete: if authorized(uid) && collection in ['players', 'sessions', 'moves'];
-        allow create, update: if authorized(uid)
-          && request.resource.data.schema_version == 1
-          && request.resource.data.installation_id == installation
-          && request.resource.data.received_at == request.time
-          && ((collection == 'players' && validPlayer(request.resource.data, id))
-            || (collection == 'sessions' && validSession(request.resource.data, id))
-            || (collection == 'moves' && validMove(request.resource.data, id)));
+        allow read: if authorized(uid) && collection in ['players', 'sessions', 'moves'];
+        allow delete: if installation != 'shared' && authorized(uid) && collection in ['players', 'sessions', 'moves'];
+        allow create, update: if authorized(uid) && (
+          (installation != 'shared'
+            && request.resource.data.schema_version == 1
+            && request.resource.data.installation_id == installation
+            && !request.resource.data.keys().hasAny(['deleted','updated_at'])
+            && request.resource.data.received_at == request.time
+            && ((collection == 'players' && validPlayer(request.resource.data, id))
+              || (collection == 'sessions' && validSession(request.resource.data, id))
+              || (collection == 'moves' && validMove(request.resource.data, id))))
+          || (installation == 'shared' && sharedValid(request.resource.data, collection, id)
+            && (resource == null || resource.data.deleted == false || request.resource.data.deleted == true))
+        );
       }
     }
     match /{document=**} {

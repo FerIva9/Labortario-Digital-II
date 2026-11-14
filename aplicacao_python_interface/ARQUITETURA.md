@@ -13,7 +13,7 @@ em `aplicacao_python_interface` e recebe diretamente a UART da FPGA.
 4. `player_store.py` salva jogadores, sessões e apresentações no SQLite;
    `cloud_outbox.py` mantém a fila persistente na mesma transação.
 5. `cloud_firebase.py` autentica via Firebase Authentication e envia snapshots
-   ao Cloud Firestore por HTTPS, em segundo plano.
+   ao Cloud Firestore por HTTPS, em segundo plano; `cloud_replica.py` reconcilia a base compartilhada e a cópia offline.
 6. `cloud_portable.py` restaura a autorização inicial incorporada ao executável;
    `cloud_credentials.py` usa o cofre do sistema quando disponível.
 7. `runtime_paths.py` separa recursos do pacote e dados persistentes.
@@ -44,8 +44,7 @@ Ensaio completo com autorização salva, instalações temporárias e dados fict
 .\.venv-build\Scripts\python.exe tools/check_cloud_integration.py --run-live --saved-access
 ```
 
-Sem `--run-live`, nenhuma requisição é feita. Sem `--saved-access`, o ensaio
-continua solicitando login interativamente.
+Sem `--run-live`, nenhuma requisição é feita. O ensaio atual utiliza o acesso salvo; sem autorização, configure a conta antes de executá-lo.
 
 Execute `gerar_windows.cmd` para gerar `dist/FabulaTEA.exe`. O pacote incorpora
 configuração, autorização, catálogo e imagens. O computador de destino precisa
@@ -53,18 +52,18 @@ de Windows compatível, internet para sincronizar e driver USB/UART para a FPGA;
 não precisa instalar Python ou copiar arquivos de configuração.
 
 Cada instalação cria seu SQLite em `%LOCALAPPDATA%\FabulaTEA\registros` e
-seu próprio identificador. O envio é local → nuvem. O painel Acompanhamento
-consulta todas as instalações do mesmo operador em memória, sem importar os
-jogadores remotos para o cadastro local nem permitir editar os dados remotos.
+seu próprio identificador. O Firebase compartilha jogadores, sessões e jogadas entre computadores do mesmo operador; o SQLite guarda a cópia offline e a fila persistente. A tela inicial e o painel recebem as alterações remotas automaticamente.
 As rotas remotas são:
 
 ```text
-operators/{UID}/installations/{INSTALLATION_ID}/players/{PLAYER_ID}
-operators/{UID}/installations/{INSTALLATION_ID}/sessions/{SESSION_ID}
-operators/{UID}/installations/{INSTALLATION_ID}/moves/{MOVE_ID}
+operators/{UID}/installations/shared/players/{PLAYER_ID}
+operators/{UID}/installations/shared/sessions/{SESSION_ID}
+operators/{UID}/installations/shared/moves/{MOVE_ID}
 ```
 
 O executável contém uma autorização recuperável e deve ser distribuído somente
 a pessoas autorizadas. A senha não é incorporada. Revogar a sessão ou desabilitar
 o operador impede acessos futuros; não existe garantia de conexão sem rede ou
 com autorização revogada. Não inclua uma chave administrativa no aplicativo.
+
+A versão bidirecional, os caminhos compartilhados, a migração e a publicação das regras estão documentados em [SINCRONIZACAO_COMPARTILHADA.md](SINCRONIZACAO_COMPARTILHADA.md).
