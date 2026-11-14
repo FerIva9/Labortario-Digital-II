@@ -1,0 +1,6 @@
+{
+  "project_id": "seu-projeto-fabula",
+  "api_key": "COLE_A_WEB_API_KEY_DO_FIREBASE",
+  "operator_uid": "COLE_O_UID_DE_AUTHENTICATION_USERS",
+  "sync_interval_seconds": 60
+}

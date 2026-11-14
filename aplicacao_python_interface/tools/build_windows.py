@@ -12,6 +12,20 @@ def run(args):
     subprocess.run([str(arg) for arg in args], cwd=BASE, check=True)
 
 
+def validate_private_access():
+    """Falha antes de empacotar se o acesso privado falta, está corrompido ou diverge."""
+    from cloud_firebase import CloudConfig
+    from cloud_portable import read_access
+    from cloud_credentials import CredentialUnavailable
+    try:
+        data = read_access(BASE / '.firebase-private')
+        config = CloudConfig.load(BASE / 'firebase_defaults.json')
+        if data is None or CloudConfig(**data['config']) != config:
+            raise ValueError()
+    except (CredentialUnavailable, ValueError, OSError):
+        raise SystemExit('Acesso privado ausente, inválido ou diferente do padrão. Execute tools/prepare_private_access.py antes de gerar.') from None
+
+
 def main():
     if sys.platform != 'win32':
         raise SystemExit('O executável Windows deve ser gerado no Windows. Copie esta pasta e execute gerar_windows.cmd.')
@@ -24,7 +38,12 @@ def main():
     run([python, '-m', 'pip', 'install', '-r', BASE / 'requirements-build.txt'])
     run([python, '-m', 'unittest', 'discover', '-s', 'tests', '-v'])
     run([python, '-c', 'import tkinter; import serial.tools.list_ports; from PIL import ImageTk'])
-    datas = ['--add-data', f'{BASE / "historias.json"}:.']
+    run([python, '-c', 'from cloud_firebase import CloudConfig; CloudConfig.load("firebase_defaults.json")'])
+    run([python, '-c', 'from tools.build_windows import validate_private_access; validate_private_access()'])
+    datas = ['--add-data', f'{BASE / "historias.json"}:.',
+             '--add-data', f'{BASE / "firebase_defaults.json"}:.']
+    for name in ('access.key', 'access.enc'):
+        datas += ['--add-data', f'{BASE / ".firebase-private" / name}:.firebase-bootstrap']
     catalog = json.loads((BASE / 'historias.json').read_text(encoding='utf-8'))
     images = {character['imagem'] for story in catalog.values()
               for character in story['personagens'] if character.get('imagem')}
@@ -37,7 +56,9 @@ def main():
     run([python, '-m', 'PyInstaller', '--noconfirm', '--clean', '--onefile', '--windowed',
          '--manifest', BASE / 'windows.manifest',
          '--name', 'FabulaTEA', '--hidden-import', 'serial.tools.list_ports_windows',
+         '--hidden-import', 'keyring.backends.Windows', '--collect-all', 'keyring',
          *datas, BASE / 'app.py'])
+    print('Acesso incorporado: copie somente FabulaTEA.exe para outro computador autorizado.')
     print(f'\nPronto: {BASE / "dist" / "FabulaTEA.exe"}')
     print('Feche a versão anterior e substitua o executável por este arquivo.')
 

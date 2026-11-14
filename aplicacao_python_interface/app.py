@@ -1,6 +1,7 @@
 """Apresentador desktop Fábula TEA +. Execute: python app.py."""
 import csv
 import json
+import queue
 import sqlite3
 import sys
 from datetime import datetime
@@ -11,7 +12,9 @@ from PIL import Image, ImageTk, ImageOps
 
 from protocol import Decoder, Event, Result
 from player_store import PlayerStore, summarize
-from runtime_paths import CATALOG_PATH, image_path, records_dir
+from runtime_paths import CATALOG_PATH, image_path, records_dir, cloud_config_path, cloud_preferences_path
+from cloud_firebase import CloudConfig, SyncWorker
+from cloud_preferences import CloudPreferences
 from ui_layout import ScrollableFrame
 from windows_display import configure_display
 
@@ -27,7 +30,13 @@ class App:
             if len(item['personagens']) != 6:
                 raise ValueError(f'História {story}: configure exatamente seis personagens.')
         self.connection = None
-        self.store = PlayerStore(records_dir() / 'jogadores.sqlite3')
+        self.db_path = records_dir() / 'jogadores.sqlite3'
+        self.store = PlayerStore(self.db_path)
+        self.cloud_worker = None
+        self.cloud_dialog = None
+        self.cloud_active = False
+        self.cloud_status = 'Preparando sincronização automática · coleta local ativa'
+        self.cloud_preferences = CloudPreferences()
         self.player_id = None
         self.session_id = None
         self.pending_move = None
@@ -189,9 +198,207 @@ class App:
         self.presentation_canvas.bind('<Configure>', self.schedule_render)
         self.update_gallery()
         self.refresh_ports()
+        self.build_cloud_menu()
         self.build_login()
         self.show_login()
+        root.after(500, self.poll_cloud)
+        root.after(1000, self.start_auto_sync)
         root.after(30, self.poll)
+
+    def build_cloud_menu(self):
+        bar = tk.Menu(self.root)
+        self.cloud_menu = tk.Menu(bar, tearoff=False)
+        self.cloud_menu.add_command(label=self.cloud_status, state='disabled')
+        self.cloud_menu.add_separator()
+        self.cloud_menu.add_command(label='Configurar / conectar…', command=self.connect_cloud)
+        self.cloud_menu.add_command(label='Pausar sincronização', command=self.pause_cloud)
+        self.cloud_menu.add_command(label='Ativar sincronização automática', command=self.resume_cloud)
+        self.cloud_menu.add_command(label='Detalhes da sincronização', command=self.cloud_details)
+        bar.add_cascade(label='Nuvem', menu=self.cloud_menu)
+        self.menu_bar = bar
+        self.root.configure(menu=bar)
+
+    def cloud_details(self):
+        window = tk.Toplevel(self.root)
+        window.title('Situação da sincronização')
+        window.transient(self.root)
+        width = min(780, int(self.root.winfo_screenwidth() * .9))
+        height = min(520, int(self.root.winfo_screenheight() * .85))
+        window.geometry(f'{width}x{height}')
+        window.rowconfigure(1, weight=1)
+        window.columnconfigure(0, weight=1)
+        ttk.Label(window, text='Sincronização com a nuvem', font=(self.font_family, 15, 'bold')).grid(row=0, column=0, sticky='w', padx=18, pady=16)
+        panel = ttk.Frame(window)
+        panel.grid(row=1, column=0, sticky='nsew', padx=18)
+        panel.rowconfigure(0, weight=1)
+        panel.columnconfigure(0, weight=1)
+        content = tk.Text(panel, wrap='word', font=(self.font_family, 10), padx=12, pady=12,
+                          bg='white', fg='#243e43', relief='flat', width=45, height=12)
+        content.grid(row=0, column=0, sticky='nsew')
+        scroll = ttk.Scrollbar(panel, command=content.yview)
+        scroll.grid(row=0, column=1, sticky='ns')
+        content.configure(yscrollcommand=scroll.set)
+        def refresh():
+            try:
+                cfg = CloudConfig.load_active()
+                destination = f'Projeto: {cfg.project_id}\nUID do responsável: {cfg.operator_uid}\n'
+            except (ValueError, OSError):
+                destination = 'Configuração Firebase ausente ou inválida.\n'
+            text = (f'{self.cloud_status}\n\n{destination}Registros na fila: {self.store.outbox.count()}'
+                    f'\nInstalação: {self.store.outbox.installation_id}'
+                    f'\nConfiguração local (opcional): {cloud_config_path()}'
+                    '\n\nOs registros pendentes permanecem no computador até a confirmação do envio. '
+                    'A sincronização automática usa a sessão salva no cofre deste computador. '
+                    'Nomes locais dos jogadores não são enviados.')
+            content.configure(state='normal')
+            content.delete('1.0', 'end')
+            content.insert('1.0', text)
+            content.configure(state='disabled')
+        def copy():
+            window.clipboard_clear()
+            window.clipboard_append(content.get('1.0', 'end-1c'))
+        buttons = ttk.Frame(window)
+        buttons.grid(row=2, column=0, sticky='ew', padx=18, pady=14)
+        ttk.Button(buttons, text='Atualizar', command=refresh).pack(side='left')
+        ttk.Button(buttons, text='Copiar detalhes', command=copy).pack(side='left', padx=8)
+        ttk.Button(buttons, text='Fechar', command=window.destroy).pack(side='right')
+        refresh()
+
+    def connect_cloud(self):
+        if self.cloud_worker and self.cloud_worker.thread.is_alive():
+            messagebox.showinfo('Nuvem', 'A sincronização anterior ainda está ativa. Pause e aguarde a conclusão da requisição antes de conectar novamente.', parent=self.root)
+            return
+        if self.cloud_dialog and self.cloud_dialog.winfo_exists():
+            self.cloud_dialog.lift()
+            return
+        initial = {'project_id': '', 'api_key': '', 'operator_uid': ''}
+        interval = 60
+        try:
+            self.cloud_preferences = CloudPreferences.load(cloud_preferences_path())
+        except (ValueError, OSError):
+            self.cloud_preferences = CloudPreferences()
+        try:
+            config = CloudConfig.load_active()
+            initial = {'project_id': config.project_id, 'api_key': config.api_key, 'operator_uid': config.operator_uid}
+            interval = config.sync_interval_seconds
+        except FileNotFoundError:
+            pass
+        except (ValueError, OSError):
+            self.cloud_status = 'Confira a configuração do Firebase antes de conectar.'
+        dialog = self.cloud_dialog = tk.Toplevel(self.root)
+        dialog.title('Conectar ao Firebase')
+        dialog.transient(self.root)
+        dialog.geometry(f'{min(600, int(self.root.winfo_screenwidth()*.85))}x{min(650, int(self.root.winfo_screenheight()*.85))}')
+        dialog.rowconfigure(0, weight=1)
+        dialog.columnconfigure(0, weight=1)
+        view = ScrollableFrame(dialog, 'white')
+        view.grid(row=0, column=0, sticky='nsew')
+        body = view.content
+        body.configure(padx=24, pady=20)
+        tk.Label(body, text='Sincronização com a nuvem', bg='white', fg='#183e3a', font=(self.font_family, 16, 'bold'), wraplength=440, anchor='w', justify='left').pack(fill='x', pady=(0, 8))
+        tk.Label(body, text='Use a conta Firebase do responsável. Os perfis dos jogadores continuam sendo escolhidos na tela inicial.', bg='white', fg='#637a7c', wraplength=440, justify='left').pack(fill='x', pady=(0, 12))
+        entries = {}
+        for key, title in [('project_id', 'ID do projeto'), ('api_key', 'Web API Key'), ('operator_uid', 'UID do responsável'), ('email', 'Email da conta Firebase'), ('password', 'Senha')]:
+            tk.Label(body, text=title, bg='white', fg='#243e43', anchor='w').pack(fill='x', pady=(6, 3))
+            entry = ttk.Entry(body, show='•' if key == 'password' else '')
+            entry.insert(0, self.cloud_preferences.email if key == 'email' else initial.get(key, ''))
+            entry.pack(fill='x')
+            entries[key] = entry
+        remember = tk.BooleanVar(value=self.cloud_preferences.remember_login)
+        ttk.Checkbutton(body, text='Manter conectado neste computador', variable=remember).pack(fill='x', pady=(12, 0))
+        tk.Label(body, text='A conexão será automática nas próximas aberturas se o acesso for salvo no cofre do sistema. A senha não é gravada. O histórico pendente será enviado ao projeto configurado.', bg='white', fg='#637a7c', wraplength=440, justify='left').pack(fill='x', pady=12)
+        feedback = tk.StringVar()
+        ttk.Label(body, textvariable=feedback, wraplength=440).pack(fill='x', pady=(0, 8))
+        def start():
+            if self.cloud_worker and self.cloud_worker.thread.is_alive():
+                feedback.set('Aguarde a conexão anterior terminar antes de salvar a nova conexão.')
+                return
+            values = {key: entry.get() for key, entry in entries.items()}
+            try:
+                cfg = CloudConfig(values['project_id'].strip(), values['api_key'].strip(), values['operator_uid'].strip(), interval).validate()
+                if not values['email'].strip() or not values['password']:
+                    raise ValueError('Informe email e senha do responsável.')
+                cfg.save(cloud_config_path())
+                self.cloud_preferences = CloudPreferences(True, remember.get(), values['email'].strip())
+                self.cloud_preferences.save(cloud_preferences_path())
+            except (ValueError, OSError) as error:
+                feedback.set(str(error))
+                return
+            self.cloud_active = True
+            self.cloud_status = 'Conectando ao Firebase…'
+            self.cloud_worker = SyncWorker(self.db_path, cfg, values['email'], values['password'],
+                                           remember=remember.get(), forget_saved=not remember.get(), allow_rebind=True)
+            self.cloud_worker.start()
+            entries['password'].delete(0, 'end')
+            dialog.destroy()
+            self.cloud_dialog = None
+        ttk.Button(body, text='Conectar e sincronizar', style='Accent.TButton', command=start).pack(fill='x')
+        def cancel():
+            dialog.destroy()
+            self.cloud_dialog = None
+            self.root.after(0, self.start_auto_sync)
+        dialog.protocol('WM_DELETE_WINDOW', cancel)
+        ttk.Button(body, text='Cancelar', command=cancel).pack(fill='x', pady=8)
+        dialog.grab_set()
+        entries['email'].focus_set()
+
+    def start_auto_sync(self):
+        if self.cloud_dialog and self.cloud_dialog.winfo_exists():
+            return
+        if self.cloud_worker and self.cloud_worker.thread.is_alive():
+            return
+        try:
+            self.cloud_preferences = CloudPreferences.load(cloud_preferences_path())
+            if not self.cloud_preferences.automatic:
+                self.cloud_status = 'Sincronização pausada por você · coleta local ativa'
+                return
+            if not self.cloud_preferences.remember_login:
+                self.cloud_status = 'Modo local · acesso não mantido neste computador'
+                return
+            config = CloudConfig.load_active()
+        except (ValueError, OSError) as error:
+            self.cloud_status = f'Modo local · confira a configuração da nuvem: {error}'
+            return
+        self.cloud_active = True
+        self.cloud_worker = SyncWorker(self.db_path, config, remember=True)
+        self.cloud_worker.start()
+
+    def resume_cloud(self):
+        try:
+            self.cloud_preferences = CloudPreferences.load(cloud_preferences_path())
+            self.cloud_preferences.automatic = True
+            self.cloud_preferences.save(cloud_preferences_path())
+        except (ValueError, OSError) as error:
+            self.cloud_status = f'Modo local · não foi possível salvar a preferência: {error}'
+            return
+        if self.cloud_worker and self.cloud_worker.thread.is_alive():
+            self.cloud_status = 'Aguarde a conexão anterior terminar e ative novamente'
+            return
+        self.start_auto_sync()
+
+    def pause_cloud(self):
+        self.cloud_active = False
+        if self.cloud_worker:
+            self.cloud_worker.stop()
+        try:
+            self.cloud_preferences.automatic = False
+            self.cloud_preferences.save(cloud_preferences_path())
+            self.cloud_status = 'Sincronização pausada · dados preservados localmente'
+        except OSError:
+            self.cloud_status = 'Pausa nesta execução · não foi possível salvar a preferência'
+        self.cloud_menu.entryconfigure(0, label=self.cloud_status)
+
+    def poll_cloud(self):
+        if self.cloud_worker:
+            while True:
+                try:
+                    status = self.cloud_worker.events.get_nowait()
+                    if self.cloud_active:
+                        self.cloud_status = status
+                except queue.Empty:
+                    break
+        self.cloud_menu.entryconfigure(0, label=self.cloud_status[:110])
+        self.root.after(500, self.poll_cloud)
 
     def show_stats(self, tabs, panel):
         if not self.details.winfo_manager():
@@ -318,7 +525,7 @@ class App:
         key = selection[0]
         name = next(p['name'] for p in self.players if p['id'] == key)
         if not messagebox.askyesno('Excluir perfil',
-                f'Excluir o perfil "{name}" e todo o seu histórico de sessões e jogadas?\n\nEsta ação não pode ser desfeita.',
+                f'Excluir o perfil "{name}" e todo o seu histórico de sessões e jogadas?\n\nA exclusão também será enviada à nuvem quando houver sincronização. Esta ação não pode ser desfeita.',
                 parent=self.root, icon='warning', default='no'):
             return
         try:
@@ -504,6 +711,7 @@ class App:
         if self.presentation_mode:
             return self.exit_presentation()
         self.presentation_mode = True
+        self.root.configure(menu='')
         self.root.attributes('-fullscreen', True)
         self.presentation_canvas.place(x=0, y=0, relwidth=1, relheight=1)
         tk.Misc.lift(self.presentation_canvas)
@@ -517,6 +725,7 @@ class App:
             self.presentation_canvas.place_forget()
             self.canvas.focus_set()
         self.root.attributes('-fullscreen', False)
+        self.root.configure(menu=self.menu_bar)
         self.schedule_render()
         return 'break'
 
@@ -717,6 +926,8 @@ class App:
             self.history.delete(row)
 
     def close(self):
+        if self.cloud_worker:
+            self.cloud_worker.stop()
         self.disconnect()
         if self.log_file:
             self.log_file.close()

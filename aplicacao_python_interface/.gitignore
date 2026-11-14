@@ -7,3 +7,26 @@ registros/
 build/
 dist/
 *.spec
+
+# Configuração local da nuvem e eventuais credenciais externas.
+firebase_config.json
+firebase_config.tmp
+.env
+.env.*
+!*.example
+*service-account*.json
+*serviceAccount*.json
+
+# Configuração e autorização privadas; nunca versionar.
+firebase_preferences.json
+firebase_preferences.tmp
+
+firebase_defaults.json
+firebase_defaults.tmp
+.firebase-private/
+
+# O executável incorpora autorização; proteja também cópias fora de dist/.
+*.exe
+.firebase-bootstrap/
+access.key
+access.enc

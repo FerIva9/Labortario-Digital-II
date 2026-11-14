@@ -116,7 +116,7 @@ Verificação gráfica opcional: `python tools/check_layout.py`. O script abre j
 3. Clique em **Ver desempenho do jogador** para consultar a taxa global, acertos/erros, sessão atual e evolução por tema, data e sessão. A taxa é `acertos / jogadas com R0 ou R1`; demonstrações e apresentações sem resultado ficam fora do cálculo. As datas preservam o horário local e fuso registrados.
 4. Use **Exportar histórico do jogador (CSV)** para obter todas as apresentações reais do perfil, com sessão, horário, história, personagem e resultado (`0`, `1` ou vazio quando não recebido).
 
-Use **Encerrar sessão / trocar jogador** para voltar à tela inicial. A aplicação desconecta a placa, preserva o histórico salvo e limpa os cartões e registros visuais da sessão anterior. Escolha um perfil e clique em **Iniciar sessão** para outro atendimento. A tela inicial é uma seleção de perfis locais, sem senha. Perfis e jogadas ficam em `registros/jogadores.sqlite3`, ou `%LOCALAPPDATA%\FabulaTEA\registros\jogadores.sqlite3` no executável Windows. Faça backup desse arquivo com o aplicativo fechado. Os dados ficam locais, sem envio a um servidor. Prefira apelidos quando apropriado.
+Use **Encerrar sessão / trocar jogador** para voltar à tela inicial. A aplicação desconecta a placa, preserva o histórico salvo e limpa os cartões e registros visuais da sessão anterior. Escolha um perfil e clique em **Iniciar sessão** para outro atendimento. A tela inicial é uma seleção de perfis locais, sem senha. Perfis e jogadas ficam em `registros/jogadores.sqlite3`, ou `%LOCALAPPDATA%\FabulaTEA\registros\jogadores.sqlite3` no executável Windows. Faça backup desse arquivo com o aplicativo fechado. Os dados são mantidos localmente; o envio opcional ao Firebase depende da conexão pelo menu Nuvem. Prefira apelidos quando apropriado.
 
 **Limpar histórico visual** não remove os dados do jogador. Os CSVs antigos de apresentações são preservados; como não contêm jogador nem resultado, não são importados automaticamente nas estatísticas. Os novos resultados persistem no SQLite e na exportação por jogador; os CSVs de sessão anteriores continuam como registros de apresentações. As estatísticas descrevem o desempenho no jogo e não representam uma avaliação clínica.
 
@@ -127,3 +127,44 @@ Para distribuir as alterações no Windows, gere novamente o executável conform
 Selecione um jogador e abra **Opções do perfil** para **Renomear** ou **Excluir perfil…**. O formulário de nome aparece somente durante o cadastro ou edição; **Cancelar** o recolhe. Renomear mantém o identificador, as sessões e todas as estatísticas do jogador. Nomes iguais recebem um identificador curto na lista para distinguir os perfis.
 
 Excluir exige confirmação e remove o perfil, suas sessões e jogadas do banco local, sem afetar outros jogadores. A exclusão não pode ser desfeita. Arquivos CSV já exportados e os antigos registros independentes de apresentações não são apagados. O gerenciamento fica na tela inicial, fora de uma sessão ativa.
+
+## Sincronização automática e padrão Firebase (branch iot-estatisticas)
+
+Os dados reais de conexão ficam em `firebase_config.json` e `firebase_defaults.json`, ignorados pelo Git. O executável inclui o padrão privado fornecido durante a geração. Um clone público sozinho não recebe autorização.
+
+A pasta privada já preparada no Linux é `aplicacao_python_interface/.firebase-private/`. Ela é oculta por começar com ponto; no gerenciador de arquivos do Linux, pressione **Ctrl+H** para mostrá-la. Contém `access.enc` (autorização criptografada) e `access.key` (chave para abrir a autorização). Não publique nenhum dos dois, mesmo criptografados.
+
+No computador Windows que vai gerar o executável, deixe os arquivos nesta estrutura:
+
+```text
+aplicacao_python_interface/
+├── gerar_windows.cmd
+├── firebase_defaults.json
+├── .firebase-private/
+│   ├── access.enc
+│   └── access.key
+├── app.py
+└── tools/
+```
+
+`firebase_config.json` é uma configuração local opcional e também fica fora do Git. Transfira a pasta privada e o padrão por um meio privado, preservando os nomes; não crie uma segunda pasta `.firebase-private` dentro da primeira. Após gerar, somente `dist/FabulaTEA.exe` é necessário no computador de destino. Não publique esse executável em commits, Releases ou anexos públicos.
+
+O `.gitignore` protege esses caminhos, os arquivos de acesso e os executáveis na pasta da aplicação. Isso não impede `git add -f`, uploads manuais ou o envio de cópias renomeadas. Antes de publicar, confira `git status --short` e `git diff --cached --name-only`. Arquivos já publicados exigem remoção do histórico e revogação do acesso; apenas adicionar ao `.gitignore` não corrige exposição anterior.
+
+Para preparar o acesso sem redigitar credenciais:
+
+1. Instale os requisitos e execute `python tools/prepare_private_access.py` na pasta da aplicação. Informe email e senha apenas nessa preparação. O programa valida o login e a autorização sem enviar dados clínicos; a senha não é gravada.
+2. O programa cria `.firebase-private/access.enc` (configuração e refresh token criptografados) e `.firebase-private/access.key` (chave privada), e ativa a sincronização automática. O cofre do sistema também é usado quando disponível.
+3. Transfira **por meio privado** a pasta `.firebase-private` completa e `firebase_defaults.json` para a pasta da aplicação clonada no Windows. Não use o Git para isso.
+4. Execute `gerar_windows.cmd`. O gerador exige e valida a pasta privada e incorpora seu conteúdo no executável. Depois, copie **somente `dist/FabulaTEA.exe`** para outro computador: ele conecta automaticamente, sem pasta privada externa ou login. A aplicação tenta guardar a autorização renovada no cofre do usuário Windows; sem cofre, mantém uma cópia local criptografada nos dados do usuário.
+5. Para trocar o acesso, use o menu Nuvem; para atualizar o pacote portátil com outra conta, execute novamente a preparação. Desmarcar a opção de lembrar remove o acesso local correspondente e desativa sua retomada automática. Isso não remove a autorização incorporada ao executável: para invalidar cópias já distribuídas, revogue as sessões da conta no Firebase ou retire a autorização do operador; para substituir o acesso embutido, gere um novo executável.
+
+**Proteção e limite:** quem possuir o arquivo criptografado e a chave poderá usar a conta. A criptografia não protege contra alguém que obtenha ambos. A chave fica fora do código e do Git, mas **é incorporada ao executável junto com a autorização**. O executável permite recuperar o acesso e deve ser tratado como uma credencial privada: não publique o `.exe`. A pasta privada é necessária somente no computador de geração. Um clone público exige transferir esse pacote por meio privado antes de gerar o executável. Internet, regras, cotas e autorização válida continuam necessárias.
+
+A sincronização começa automaticamente e os registros permanecem no SQLite quando a rede falha. O pacote não transporta o histórico de pacientes: cada instalação mantém seu banco e identificador próprios. Cotas e pausas do plano gratuito permanecem iguais. Tokens podem ser revogados; nesse caso, conecte novamente ou refaça a preparação. Referência: [sessões Firebase](https://firebase.google.com/docs/auth/admin/manage-sessions).
+
+Os nomes locais dos jogadores não são enviados; a nuvem recebe perfis codificados, sessões, jogadas e resumos, incluindo exclusões. O fluxo é local → nuvem e não baixa ou combina dados de outras instalações. A primeira autenticação também publica o histórico pendente existente.
+
+O uso permanece **estritamente gratuito**: mantenha o projeto no Spark sem conta de faturamento vinculada. O programa não verifica o plano do projeto. O intervalo padrão é 60 segundos; HTTP 429/RESOURCE_EXHAUSTED pausa o envio com a fila preservada. Não há habilitação de cobrança ou migração de plano pela aplicação.
+
+Os testes automatizados usam transporte e cofre substituídos, sem acessar sua conta real. O roteiro `python tools/check_cloud_integration.py --run-live` cria somente dados fictícios em uma instalação temporária; sem essa opção, não faz requisições. A validação do executável atualizado deve ser concluída no Windows.

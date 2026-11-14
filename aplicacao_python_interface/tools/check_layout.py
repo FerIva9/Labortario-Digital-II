@@ -9,12 +9,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import tkinter as tk
 from app import App
 from protocol import Event, Result
+from cloud_firebase import CloudConfig
 
 for scale in (1.33, 1.67, 2.0, 2.67):
     root = tk.Tk()
     root.tk.call('tk', 'scaling', scale)
     temporary = tempfile.TemporaryDirectory()
-    with patch('app.records_dir', return_value=Path(temporary.name)):
+    with patch('app.records_dir', return_value=Path(temporary.name)), patch.object(App, 'start_auto_sync'):
         app = App(root)
     root.update()
     assert app.login_view.winfo_ismapped()
@@ -27,6 +28,18 @@ for scale in (1.33, 1.67, 2.0, 2.67):
         for control in (app.login_search_entry, app.start_session_button, app.profile_options):
             assert control.winfo_x() >= 0
             assert control.winfo_x() + control.winfo_width() <= control.master.winfo_width()
+    app.cloud_details()
+    root.update()
+    details_windows = [w for w in root.winfo_children() if isinstance(w, tk.Toplevel)]
+    assert len(details_windows) == 1
+    assert details_windows[0].winfo_width() > 400
+    details_windows[0].destroy()
+    with patch('app.CloudConfig.load_active', return_value=CloudConfig('fabula-teste', 'chave-ficticia', 'operador123')), patch('app.cloud_preferences_path', return_value=Path(temporary.name)/'preferences.json'):
+        app.connect_cloud()
+    root.update()
+    assert app.cloud_dialog.winfo_exists()
+    app.cloud_dialog.destroy()
+    app.cloud_dialog = None
     app.show_profile_editor()
     root.update()
     assert app.profile_editor.winfo_ismapped()
@@ -67,8 +80,10 @@ for scale in (1.33, 1.67, 2.0, 2.67):
         root.update()
         app.present(Event(1, 1), 'Serial')
         assert app.presentation_mode and app.photo is not None
+        assert str(root.cget('menu')) == ''
         app.exit_presentation()
         root.update()
+        assert str(root.cget('menu')) == str(app.menu_bar)
         print(f'OK escala Tk {scale}: {width}x{height}', flush=True)
     app.present(Event(2, 3), 'Serial')
     app.receive_result(Result(True))

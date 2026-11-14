@@ -22,3 +22,17 @@ def records_dir():
     # Independente da pasta temporária do PyInstaller e da pasta de instalação.
     user_data = Path(os.environ.get('LOCALAPPDATA') or Path.home() / 'AppData' / 'Local')
     return user_data / 'FabulaTEA' / 'registros'
+
+
+def cloud_config_path():
+    """Configuração externa ao pacote, sem senha ou token."""
+    override = os.environ.get('FABULA_FIREBASE_CONFIG')
+    return Path(override).expanduser() if override else records_dir().parent / 'firebase_config.json'
+
+
+def cloud_defaults_path():
+    return BUNDLE_DIR / 'firebase_defaults.json'
+
+
+def cloud_preferences_path():
+    return records_dir().parent / 'firebase_preferences.json'
