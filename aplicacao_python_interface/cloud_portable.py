@@ -1,10 +1,14 @@
 """Acesso portátil privado: pacote privado de origem e bootstrap incorporado pelo gerador Windows."""
 import json
 import os
+import tempfile
+import threading
 from pathlib import Path
 
 from cloud_credentials import CredentialUnavailable, CredentialVault
 from runtime_paths import APP_DIR, BUNDLE_DIR, FROZEN, records_dir
+
+_ACCESS_LOCK = threading.RLock()
 
 
 def private_dir():
@@ -12,6 +16,11 @@ def private_dir():
 
 
 def read_access(directory=None):
+    with _ACCESS_LOCK:
+        return _read_access(directory)
+
+
+def _read_access(directory=None):
     from cryptography.fernet import Fernet, InvalidToken
     if directory is None:
         directory = private_dir()
@@ -34,6 +43,11 @@ def read_access(directory=None):
 
 
 def write_access(config, token, directory=None):
+    with _ACCESS_LOCK:
+        _write_access(config, token, directory)
+
+
+def _write_access(config, token, directory=None):
     from cryptography.fernet import Fernet
     from dataclasses import asdict
     directory = Path(directory) if directory is not None else private_dir()
@@ -45,11 +59,14 @@ def write_access(config, token, directory=None):
             stream.write(Fernet.generate_key())
     encrypted = Fernet(key_path.read_bytes()).encrypt(json.dumps(
         {'config': asdict(config), 'refresh_token': token}).encode())
-    temp = directory / 'access.tmp'
-    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, 'wb') as stream:
-        stream.write(encrypted)
-    temp.replace(directory / 'access.enc')
+    fd, name = tempfile.mkstemp(prefix='access-', suffix='.tmp', dir=directory)
+    temp = Path(name)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(encrypted)
+        temp.replace(directory / 'access.enc')
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 class PortableVault:
@@ -80,7 +97,7 @@ class PortableVault:
             pass
         try:
             data = read_access()
-            if data and data['config']['project_id'] == config.project_id and data['config']['operator_uid'] == config.operator_uid:
+            if not saved or (data and data['config']['project_id'] == config.project_id and data['config']['operator_uid'] == config.operator_uid):
                 write_access(config, token)
                 saved = True
         except (CredentialUnavailable, OSError):

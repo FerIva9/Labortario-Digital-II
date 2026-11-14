@@ -315,6 +315,8 @@ class SyncWorker:
         self.forget_saved = forget_saved
         self.events = queue.Queue()
         self._stop = threading.Event()
+        self._wake = threading.Event()
+        self._remember_requested = threading.Event()
         self.thread = threading.Thread(target=self.run, name='FirebaseSync', daemon=True)
         self._credential_notice = ''
 
@@ -323,6 +325,17 @@ class SyncWorker:
 
     def stop(self):
         self._stop.set()
+        self._wake.set()
+
+    @property
+    def stopping(self):
+        return self._stop.is_set()
+
+    def request_sync(self, *, remember=False):
+        if remember:
+            self.remember = True
+            self._remember_requested.set()
+        self._wake.set()
 
     def _save_token(self, token):
         try:
@@ -382,13 +395,21 @@ class SyncWorker:
             backoff = 3
             while not self._stop.is_set():
                 try:
+                    if self._remember_requested.is_set():
+                        self._remember_requested.clear()
+                        client.on_refresh_token = self._save_token
+                        self._save_token(client._refresh_token)
                     sent = sync_once(store, client)
                     pending = store.outbox.count()
                     status = f'Sincronizando · {pending} pendências' if pending else 'Nuvem em dia · sem pendências'
                     self.events.put(status + self._credential_notice)
                     backoff = 3
                     if not sent or not pending:
-                        self._stop.wait(self.config.sync_interval_seconds)
+                        changed = self._wake.wait(self.config.sync_interval_seconds)
+                        self._wake.clear()
+                        if changed:
+                            # Agrupa a apresentação e seu R0/R1 sem esperar um minuto.
+                            self._stop.wait(.35)
                 except FirebaseError as error:
                     if not error.retryable:
                         raise

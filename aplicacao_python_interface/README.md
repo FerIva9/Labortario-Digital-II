@@ -10,7 +10,7 @@ Em uma sessão gráfica do Ubuntu, instale `python3-tk` e `python3-venv`:
 
 ```bash
 sudo apt update
-sudo apt install python3-tk python3-venv
+sudo apt install python3-tk python3-venv ca-certificates
 cd aplicacao_python_interface
 python3 -m venv .venv
 source .venv/bin/activate
@@ -21,8 +21,9 @@ python3 app.py
 Para o Firebase automático, transfira `firebase_defaults.json` e
 `.firebase-private/` por meio privado. Um clone sem esses arquivos abre a
 interface em modo local; também é possível configurar o acesso pelo menu Nuvem.
-Sem cofre seguro no Ubuntu, a autorização preparada usa o pacote privado
-criptografado. A porta serial exige permissão do usuário (normalmente o grupo
+Sem cofre seguro no Ubuntu, um login marcado para lembrar cria automaticamente
+um arquivo privado criptografado; também é possível transferir a autorização
+preparada. A senha não é gravada. A porta serial exige permissão do usuário (normalmente o grupo
 `dialout`, após sair e entrar na sessão). O workflow `Interface Ubuntu` testa
 a lógica e a interface em tela virtual sem credenciais Firebase.
 
@@ -189,7 +190,7 @@ No executável, os CSVs ficam em **`%LOCALAPPDATA%\FabulaTEA\registros`**. Para 
 
 Para alterar somente nomes ou associações sem recompilar, coloque uma cópia de `historias.json` ao lado do `.exe` e edite-a. Para imagens próprias, coloque também a pasta `assets` com os arquivos referenciados ao lado do executável. A aplicação usa essas imagens quando existem e procura as demais no pacote interno. Reinicie após as alterações. Um catálogo externo tem prioridade sobre o catálogo embutido: atualize ou remova essa cópia se quiser usar o catálogo de uma nova compilação.
 
-A preparação foi verificada em Linux; a criação e o teste final do `.exe` precisam ser feitos no Windows. Após gerar, abra o executável fora da pasta do código, teste uma imagem de cada história, verifique o CSV e depois faça a recepção serial com a placa conectada.
+O executável e seu diagnóstico foram verificados no Windows, inclusive fora da pasta do código. Após distribuir, confira as imagens, os registros e a recepção com a placa física. A execução nativa em Ubuntu deve ser conferida no Linux; há verificações locais e gráficas no workflow Ubuntu.
 
 ## Apresentação somente do personagem
 
@@ -201,7 +202,7 @@ A janela inicial se ajusta ao tamanho da tela, usa Segoe UI no Windows e permite
 
 `windows.manifest` declara a escala de DPI do sistema para o executável; ao rodar o código diretamente, `windows_display.py` configura isso antes de criar a janela. Não é necessário reduzir a escala do Windows para usar o aplicativo. A escala é a do sistema no início da execução; mudanças de escala durante o uso podem exigir reiniciar o aplicativo. Inclua `ui_layout.py`, `windows_display.py` e `windows.manifest` ao copiar o código para recompilar no Windows.
 
-Verificação gráfica opcional: `python tools/check_layout.py`. O script abre janelas temporárias para conferir três tamanhos (1240×900, 1024×650 e 800×600) em quatro escalas de fontes, incluindo galeria, limites dos controles, redimensionamento e apresentação de novos personagens em tela cheia. Esses testes foram executados em Linux; a conferência visual final no Windows continua necessária.
+Verificação gráfica opcional: `python tools/check_layout.py`. O script abre janelas temporárias para conferir três tamanhos (1240×900, 1024×650 e 800×600) em quatro escalas de fontes, incluindo galeria, limites dos controles, redimensionamento, apresentação em tela cheia e recepção fragmentada de R1/R0. As verificações atuais foram executadas no Windows; o workflow Ubuntu executa o mesmo roteiro em uma tela virtual Linux.
 
 ## Jogadores e acompanhamento
 
@@ -223,6 +224,33 @@ Selecione um jogador e abra **Opções do perfil** para **Renomear** ou **Exclui
 Excluir exige confirmação e remove o perfil, suas sessões e jogadas do banco local, sem afetar outros jogadores. A exclusão não pode ser desfeita. Arquivos CSV já exportados e os antigos registros independentes de apresentações não são apagados. O gerenciamento fica na tela inicial, fora de uma sessão ativa.
 
 ## Sincronização automática e padrão Firebase (branch iot-estatisticas)
+
+No menu **Nuvem**, a opção marcada **Sincronização automática** é persistida e
+retomada nas próximas aberturas. Ativá-la também habilita lembrar o acesso.
+**Reconectar / sincronizar agora** retoma o envio ou solicita uma tentativa imediata.
+Se ainda não houver autorização salva, conecte a conta pelo mesmo menu uma vez.
+Pausar e reativar aguarda o término da requisição anterior, sem exigir um segundo
+clique ou iniciar trabalhadores concorrentes.
+
+Novos jogadores, sessões (inclusive vazias), apresentações seriais, resultados
+`R1`/`R0`, renomeações e exclusões entram na fila SQLite na transação dos dados.
+A interface verifica pendências a cada 500 ms e acorda o sincronizador; ele
+agrupa brevemente as alterações antes do envio. Não é preciso iniciar outra
+sessão, consultar o painel ou esperar o intervalo padrão de 60 segundos.
+Esse intervalo permanece como verificação periódica de segurança.
+
+Sem rede, os dados permanecem na fila e há novas tentativas com espera crescente.
+Se fechar o aplicativo antes da confirmação, a fila é retomada na próxima abertura
+com a sincronização habilitada. **Nuvem em dia** indica fila confirmada, não apenas
+login efetuado. Pausas manuais, conta revogada, regras negadas e cotas exigem
+correção ou reativação; não são resolvidas apagando o banco local.
+
+O recebimento serial preserva `H<história>,P<personagem>` + LF, seguido de `R1` + LF
+para acerto ou `R0` + LF para erro. Aceita mensagens fragmentadas e CRLF. Um
+resultado atualiza a mesma jogada e os resumos de jogador/sessão, mesmo se a
+apresentação já tiver sido enviada com resultado vazio; não cria outra jogada.
+Resultados órfãos ou repetidos não alteram a taxa. O firmware deve transmitir
+essas mensagens: o tratamento da aplicação permanece ativo no Windows e Linux.
 
 Os dados reais de conexão ficam em `firebase_config.json` e `firebase_defaults.json`, ignorados pelo Git. O executável inclui o padrão privado fornecido durante a geração. Um clone público sozinho não recebe autorização.
 
@@ -259,6 +287,6 @@ A sincronização começa automaticamente e os registros permanecem no SQLite qu
 
 Os nomes ou apelidos cadastrados são enviados no perfil do jogador; a nuvem também recebe sessões, jogadas e resumos, incluindo exclusões. O envio é local → nuvem. O painel Acompanhamento consulta outras instalações do mesmo operador sem importar seus cadastros para o SQLite local. A primeira autenticação também publica o histórico pendente existente.
 
-O uso permanece **estritamente gratuito**: mantenha o projeto no Spark sem conta de faturamento vinculada. O programa não verifica o plano do projeto. O intervalo padrão é 60 segundos; HTTP 429/RESOURCE_EXHAUSTED pausa o envio com a fila preservada. Não há habilitação de cobrança ou migração de plano pela aplicação.
+Para manter o uso no plano gratuito, mantenha o projeto no Spark sem conta de faturamento vinculada. O programa não verifica o plano do projeto. A sincronização reage às pendências e usa 60 segundos como verificação periódica; HTTP 429/RESOURCE_EXHAUSTED pausa o envio com a fila preservada. Não há habilitação de cobrança ou migração de plano pela aplicação.
 
-Os testes automatizados usam transporte e cofre substituídos, sem acessar sua conta real. O roteiro `python tools/check_cloud_integration.py --run-live` cria somente dados fictícios em uma instalação temporária; sem essa opção, não faz requisições. A validação do executável atualizado deve ser concluída no Windows.
+Os testes unitários usam transporte e cofre substituídos. O roteiro `python tools/check_cloud_integration.py --run-live --saved-access` testa o Firebase real com instalações fictícias, incluindo trabalhador automático, sessões vazias, atualização posterior com R1/R0 e retomada com acesso salvo; remove os dados ao final. Sem `--run-live`, não faz requisições. O diagnóstico do `.exe` inclui esse ensaio e o painel. O workflow Ubuntu executa os testes locais e gráficos sem credenciais reais; não substitui a verificação de uma placa física ou de uma conexão Firebase real em Ubuntu.

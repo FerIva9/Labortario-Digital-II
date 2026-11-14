@@ -1,4 +1,4 @@
-"""Preferências locais. Segredos pertencem exclusivamente ao cofre do SO."""
+"""Preferências sem segredos; cloud_portable gerencia o acesso persistente."""
 from dataclasses import asdict, dataclass
 import json
 from pathlib import Path

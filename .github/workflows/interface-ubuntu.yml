@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Dependências do Ubuntu
-        run: sudo apt-get update && sudo apt-get install -y python3-tk python3-venv xvfb xauth
+        run: sudo apt-get update && sudo apt-get install -y python3-tk python3-venv ca-certificates xvfb xauth
       - name: Dependências Python
         run: |
           python3 -m venv .venv

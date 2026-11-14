@@ -211,8 +211,10 @@ class App:
         self.cloud_menu.add_command(label=self.cloud_status, state='disabled')
         self.cloud_menu.add_separator()
         self.cloud_menu.add_command(label='Configurar / conectar…', command=self.connect_cloud)
-        self.cloud_menu.add_command(label='Pausar sincronização', command=self.pause_cloud)
-        self.cloud_menu.add_command(label='Ativar sincronização automática', command=self.resume_cloud)
+        self.cloud_automatic_var = tk.BooleanVar(value=self.cloud_preferences.automatic)
+        self.cloud_menu.add_checkbutton(label='Sincronização automática', variable=self.cloud_automatic_var,
+                                        command=self.toggle_cloud_automatic)
+        self.cloud_menu.add_command(label='Reconectar / sincronizar agora', command=self.resume_cloud)
         self.cloud_menu.add_command(label='Detalhes da sincronização', command=self.cloud_details)
         bar.add_cascade(label='Nuvem', menu=self.cloud_menu)
         bar.add_command(label='Acompanhamento', command=self.open_performance)
@@ -226,6 +228,12 @@ class App:
             existing.window.lift()
             return
         self.performance_window = PerformanceWindow(self)
+
+    def toggle_cloud_automatic(self):
+        if self.cloud_automatic_var.get():
+            self.resume_cloud()
+        else:
+            self.pause_cloud()
 
     def cloud_details(self):
         window = tk.Toplevel(self.root)
@@ -257,8 +265,9 @@ class App:
                     f'\nInstalação: {self.store.outbox.installation_id}'
                     f'\nConfiguração local (opcional): {cloud_config_path()}'
                     '\n\nOs registros pendentes permanecem no computador até a confirmação do envio. '
-                    'A sincronização automática usa a sessão salva no cofre deste computador. '
-                    'Nomes locais dos jogadores não são enviados.')
+                    'A sincronização automática reutiliza a autorização salva. '
+                    'O acesso é salvo no cofre ou no arquivo privado criptografado. '
+                    'Nomes cadastrados, sessões e resultados são enviados ao Firebase.')
             content.configure(state='normal')
             content.delete('1.0', 'end')
             content.insert('1.0', text)
@@ -315,7 +324,7 @@ class App:
             entries[key] = entry
         remember = tk.BooleanVar(value=self.cloud_preferences.remember_login)
         ttk.Checkbutton(body, text='Manter conectado neste computador', variable=remember).pack(fill='x', pady=(12, 0))
-        tk.Label(body, text='A conexão será automática nas próximas aberturas se o acesso for salvo no cofre do sistema. A senha não é gravada. O histórico pendente será enviado ao projeto configurado.', bg='white', fg='#637a7c', wraplength=440, justify='left').pack(fill='x', pady=12)
+        tk.Label(body, text='A conexão será automática nas próximas aberturas com o acesso salvo no cofre ou no arquivo privado criptografado. A senha não é gravada. O histórico pendente será enviado ao projeto configurado.', bg='white', fg='#637a7c', wraplength=440, justify='left').pack(fill='x', pady=12)
         feedback = tk.StringVar()
         ttk.Label(body, textvariable=feedback, wraplength=440).pack(fill='x', pady=(0, 8))
         def start():
@@ -330,6 +339,7 @@ class App:
                 cfg.save(cloud_config_path())
                 self.cloud_preferences = CloudPreferences(True, remember.get(), values['email'].strip())
                 self.cloud_preferences.save(cloud_preferences_path())
+                self.cloud_automatic_var.set(True)
             except (ValueError, OSError) as error:
                 feedback.set(str(error))
                 return
@@ -358,6 +368,8 @@ class App:
             return
         try:
             self.cloud_preferences = CloudPreferences.load(cloud_preferences_path())
+            if getattr(self, 'cloud_automatic_var', None) is not None:
+                self.cloud_automatic_var.set(self.cloud_preferences.automatic)
             if not self.cloud_preferences.automatic:
                 self.cloud_status = 'Sincronização pausada por você · coleta local ativa'
                 return
@@ -376,12 +388,30 @@ class App:
         try:
             self.cloud_preferences = CloudPreferences.load(cloud_preferences_path())
             self.cloud_preferences.automatic = True
+            self.cloud_preferences.remember_login = True
             self.cloud_preferences.save(cloud_preferences_path())
+            if getattr(self, 'cloud_automatic_var', None) is not None:
+                self.cloud_automatic_var.set(True)
         except (ValueError, OSError) as error:
             self.cloud_status = f'Modo local · não foi possível salvar a preferência: {error}'
             return
         if self.cloud_worker and self.cloud_worker.thread.is_alive():
-            self.cloud_status = 'Aguarde a conexão anterior terminar e ative novamente'
+            if self.cloud_worker.stopping:
+                self.cloud_status = 'Retomando sincronização automática…'
+                self.root.after(100, self.finish_cloud_resume)
+            else:
+                self.cloud_active = True
+                self.cloud_worker.request_sync(remember=True)
+                self.cloud_status = 'Sincronização automática ativada · verificando pendências'
+            return
+        self.start_auto_sync()
+
+    def finish_cloud_resume(self):
+        if not self.cloud_preferences.automatic:
+            return
+        if self.cloud_worker and self.cloud_worker.thread.is_alive():
+            if self.cloud_worker.stopping:
+                self.root.after(100, self.finish_cloud_resume)
             return
         self.start_auto_sync()
 
@@ -392,6 +422,7 @@ class App:
         try:
             self.cloud_preferences.automatic = False
             self.cloud_preferences.save(cloud_preferences_path())
+            self.cloud_automatic_var.set(False)
             self.cloud_status = 'Sincronização pausada · dados preservados localmente'
         except OSError:
             self.cloud_status = 'Pausa nesta execução · não foi possível salvar a preferência'
@@ -406,6 +437,12 @@ class App:
                         self.cloud_status = status
                 except queue.Empty:
                     break
+            if self.cloud_active and self.cloud_worker.thread.is_alive() and not self.cloud_worker.stopping:
+                pending = self.store.outbox.count()
+                if pending:
+                    if not getattr(self, 'cloud_status', '').startswith(('Modo local', 'Sincronização pausada')):
+                        self.cloud_status = f'Sincronizando · {pending} documentos pendentes'
+                    self.cloud_worker.request_sync()
         self.cloud_menu.entryconfigure(0, label=self.cloud_status[:110])
         self.root.after(500, self.poll_cloud)
 

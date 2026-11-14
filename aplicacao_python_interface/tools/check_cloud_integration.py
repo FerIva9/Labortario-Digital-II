@@ -5,11 +5,12 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+import time
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from cloud_firebase import CloudConfig, FirebaseError, FirestoreClient, request_json, sync_once
+from cloud_firebase import CloudConfig, FirebaseError, FirestoreClient, request_json, sync_once, SyncWorker
 from player_store import PlayerStore
-from protocol import Event
+from protocol import Event, Result, Decoder
 from runtime_paths import cloud_config_path
 from cloud_portable import PortableVault
 from cloud_credentials import CredentialUnavailable
@@ -24,6 +25,74 @@ def drain(store, client):
 def require(condition, message):
     if not condition:
         raise RuntimeError(message)
+
+
+def verify_automatic(store, config, refresh_token, player):
+    """Trabalhador real: sessão vazia, resultado posterior, R1/R0 e reinício."""
+    class SessionVault:
+        def load(self, config):
+            return refresh_token
+        def save(self, config, token):
+            pass
+    worker = None
+    records = []
+    def wait_for_upload():
+        deadline = time.monotonic() + 45
+        while time.monotonic() < deadline:
+            if not store.outbox.count():
+                return
+            if not worker.thread.is_alive():
+                raise RuntimeError('Trabalhador automático encerrou antes de confirmar o envio.')
+            time.sleep(.05)
+        raise RuntimeError('Envio automático não confirmou os dados dentro do prazo.')
+    def start_worker():
+        return SyncWorker(Path(store.db.execute('PRAGMA database_list').fetchone()['file']), config,
+                          remember=True, vault=SessionVault())
+    try:
+        session = store.session(player)
+        records.append(('sessions', session))
+        worker = start_worker()
+        worker.start()
+        wait_for_upload()
+        reader = FirestoreClient(config)
+        reader.restore(refresh_token)
+        fields = reader.get_document(store.outbox.installation_id, 'sessions', session)['fields']
+        require(fields['presentations_count']['integerValue'] == '0', 'Sessão vazia não sincronizada automaticamente.')
+        decoder = Decoder()
+        pending = None
+        # Recepção fragmentada, como na UART real; o resultado pode chegar após o envio da apresentação.
+        for fragment in (b'H0,P1\nR', b'1\nH0,P1\nR0\n'):
+            for event in decoder.feed(fragment):
+                if isinstance(event, Event):
+                    pending = store.move(session, event)
+                    records.append(('moves', str(pending)))
+                elif isinstance(event, Result):
+                    require(pending is not None, 'Resultado sem apresentação no ensaio.')
+                    store.result(pending, event.correct)
+                    pending = None
+                else:
+                    raise RuntimeError('Protocolo inválido no ensaio automático.')
+            worker.request_sync()
+            wait_for_upload()
+        fields = reader.get_document(store.outbox.installation_id, 'sessions', session)['fields']
+        require(fields['evaluated_count']['integerValue'] == '2', 'Resultados R0/R1 não sincronizados.')
+        require(fields['accuracy_percent']['doubleValue'] == 50.0, 'Resumo automático divergente.')
+        worker.stop()
+        worker.thread.join(15)
+        require(not worker.thread.is_alive(), 'Trabalhador anterior não encerrou.')
+        another = store.session(player)
+        records.append(('sessions', another))
+        worker = start_worker()
+        worker.start()
+        wait_for_upload()
+        reader.get_document(store.outbox.installation_id, 'sessions', another)
+        print('OK: trabalhador automático, sessão vazia, atualização posterior, R1/R0 e retomada com acesso salvo.')
+        return records
+    finally:
+        if worker:
+            worker.stop()
+            worker.thread.join(15)
+            require(not worker.thread.is_alive(), 'Trabalhador automático ainda ativo durante a limpeza.')
 
 
 def main():
@@ -60,6 +129,7 @@ def main():
         cleanup_failed = False
         success = False
         other = None
+        automatic_records = []
         installation = store.outbox.installation_id
         print(f'Instalação TEMPORÁRIA: {installation}')
         try:
@@ -128,6 +198,7 @@ def main():
                 else:
                     raise RuntimeError(f'As regras permitiram acesso indevido: {label}.')
                 print(f'OK: acesso negado — {label}.')
+            automatic_records = verify_automatic(store, config, client._refresh_token, player)
             success = True
         finally:
             if other:
@@ -151,7 +222,7 @@ def main():
                         require(error.status == 404, 'Não foi possível confirmar a exclusão remota.')
                     else:
                         raise RuntimeError('O perfil fictício continua no banco remoto.')
-                    for entity, record_id in [('sessions', session), ('moves', str(first)), ('moves', str(second)), ('moves', str(third))]:
+                    for entity, record_id in [('sessions', session), ('moves', str(first)), ('moves', str(second)), ('moves', str(third))] + automatic_records:
                         if record_id in (None, 'None'):
                             continue
                         try:

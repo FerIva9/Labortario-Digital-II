@@ -61,7 +61,7 @@ Para o protótipo com poucos atendimentos, não há necessidade de trocar de ban
 
 ### Comportamento da aplicação para economizar cota
 
-- O intervalo padrão de novas configurações passou para **60 segundos**, permitindo agrupar mais alterações. Configurações existentes com 15 segundos são preservadas; altere `sync_interval_seconds` para 60 no JSON se desejar adotar o novo padrão.
+- O intervalo padrão de verificação periódica é **60 segundos**. Novas pendências acordam o trabalhador antes desse prazo, com um breve agrupamento. O valor no JSON funciona como verificação de segurança, não como atraso obrigatório para sessões e resultados.
 - Os documentos utilizam IDs estáveis e snapshots completos, sem incrementar contadores a cada reenvio.
 - Não há listener em tempo real nem leitura contínua de coleções; sem pendências, só há consulta ao SQLite.
 - **HTTP 429 ou indicação RESOURCE_EXHAUSTED pausa o trabalhador**, sem novas tentativas contínuas. O jogo continua coletando localmente e a fila não é apagada.
@@ -155,6 +155,28 @@ Referência: [iniciar com Security Rules](https://firebase.google.com/docs/fires
 Não é necessário usar Database URL, measurementId, client secret, arquivo de service account ou chave privada. A URL do Firestore é montada com o Project ID.
 
 ## 10. Padrão distribuído e sincronização automática
+
+O menu Nuvem mostra uma marca em **Sincronização automática** e mantém essa
+preferência entre execuções. Ativá-la também habilita lembrar o acesso. Ao pausar
+e reativar, a interface aguarda a requisição anterior terminar e reinicia o
+trabalhador, sem exigir nova ativação. **Reconectar / sincronizar agora** também
+solicita o envio das pendências. As regras já publicadas continuam válidas.
+
+Cada 500 ms, a interface verifica a fila e acorda o trabalhador se houver dados.
+O envio inclui sessões vazias e atualizações posteriores de apresentações com
+resultados R1/R0, preservando os IDs. A fila é confirmada por revisão; uma
+atualização feita durante o envio não é apagada pela confirmação da versão antiga.
+Falhas transitórias usam novas tentativas; a pausa manual e falhas permanentes
+preservam a fila. Se o aplicativo fechar antes da confirmação, o envio retoma na
+próxima abertura com autorização válida e sincronização habilitada.
+
+No Ubuntu, a execução continua sendo `python3 app.py`, após ativar o ambiente e
+instalar os requisitos, `python3-tk`, `python3-venv` e `ca-certificates`. Sem cofre
+seguro, um novo login lembrado cria automaticamente `.firebase-private/` com
+refresh token criptografado; não exige que o pacote já exista. A senha não é
+armazenada. O arquivo privado deve permanecer acessível somente às pessoas
+autorizadas. Também é possível transferir o pacote preparado e o padrão por meio
+privado. O mesmo transporte HTTPS e a mesma fila são usados nos dois sistemas.
 
 Os dados reais de conexão ficam em `firebase_config.json` e `firebase_defaults.json`, ignorados pelo Git. O executável inclui o padrão privado fornecido durante a geração. Um clone público sozinho não recebe autorização.
 
@@ -297,7 +319,8 @@ Depois desse ensaio controlado, validar na interface:
 | player_store.py | Enfileira alterações e exclusões na transação dos dados. |
 | cloud_outbox.py | Migração, snapshots, identidade da instalação, fila e confirmações. |
 | cloud_firebase.py | HTTPS REST, sessão restaurada, renovação de token e reconexão automática. |
-| cloud_credentials.py | Refresh token exclusivamente no cofre seguro do sistema. |
+| cloud_credentials.py | Integração com o cofre seguro do sistema. |
+| cloud_portable.py | Alternativa criptografada ao cofre e bootstrap privado do executável. |
 | cloud_preferences.py | Persistência local de pausa, email e preferência de lembrar. |
 | firebase_defaults.json | Padrão privado ignorado pelo Git, incluído no executável durante a geração. |
 | app.py | Menu Nuvem, configuração e conexão do responsável, estado e pausa. |
@@ -307,7 +330,7 @@ Depois desse ensaio controlado, validar na interface:
 | tests/test_cloud_sync.py | Verificações locais com transporte substituído. |
 | tools/check_cloud_integration.py | Ensaio remoto preparado para a etapa posterior à configuração. |
 
-O operador já conferiu dados no Firebase Console. A persistência no cofre e a retomada automática foram verificadas com transporte/cofre substituídos; a compilação e a conferência nativa do novo executável Windows continuam pendentes.
+As verificações no Windows incluem testes gráficos e ensaios no Firebase real com dados fictícios, usando o trabalhador automático e resultados R1/R0. O `.exe` possui diagnóstico isolado para repetir a verificação. Os testes locais cobrem persistência sem cofre, envio após alterações, novas tentativas e reinício. O workflow Ubuntu executa a lógica e a interface sem credenciais reais; a verificação nativa de Ubuntu com Firebase e a bancada física da FPGA permanecem verificações separadas.
 
 ### Acesso negado antes do primeiro envio
 

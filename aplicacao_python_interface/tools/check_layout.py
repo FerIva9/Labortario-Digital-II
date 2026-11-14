@@ -8,7 +8,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import tkinter as tk
 from app import App
-from protocol import Event, Result
+from protocol import Event, Result, Decoder
 from cloud_firebase import CloudConfig
 
 for scale in (1.33, 1.67, 2.0, 2.67):
@@ -87,6 +87,19 @@ for scale in (1.33, 1.67, 2.0, 2.67):
         print(f'OK escala Tk {scale}: {width}x{height}', flush=True)
     app.present(Event(2, 3), 'Serial')
     app.receive_result(Result(True))
+    evaluated_before = len([r for r in app.store.history(app.player_id) if r['result'] is not None])
+    decoder = Decoder()
+    for fragment in (b'H0,P1\nR', b'1\nH0,P1\nR0\n'):
+        for event in decoder.feed(fragment):
+            if isinstance(event, Event):
+                app.present(event, 'Serial')
+            elif isinstance(event, Result):
+                app.receive_result(event)
+    evaluated = [r for r in app.store.history(app.player_id) if r['result'] is not None]
+    assert len(evaluated) == evaluated_before + 2
+    assert [r['result'] for r in evaluated[-2:]] == [1, 0]
+    app.receive_result(Result(True))
+    assert len([r for r in app.store.history(app.player_id) if r['result'] is not None]) == len(evaluated)
     old_player = app.player_id
     old_session = app.session_id
     app.end_session()

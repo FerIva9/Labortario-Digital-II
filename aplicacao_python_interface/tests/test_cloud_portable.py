@@ -45,6 +45,24 @@ class PortableTests(unittest.TestCase):
     def test_missing_private_package_returns_none(self):
         self.assertIsNone(read_access())
 
+    def test_new_login_without_keyring_persists_and_restores_on_linux(self):
+        with patch('cloud_portable.CredentialVault._backend', side_effect=CredentialUnavailable('sem cofre')):
+            PortableVault().save(CONFIG, 'refresh-novo-ficticio')
+            self.assertEqual(PortableVault().load(CONFIG), 'refresh-novo-ficticio')
+            self.assertNotIn(b'refresh-novo-ficticio', (self.directory / 'access.enc').read_bytes())
+            other = CloudConfig('outro-projeto', 'key', 'outro-operador')
+            self.assertIsNone(PortableVault().load(other))
+            PortableVault().delete(CONFIG)
+            self.assertIsNone(PortableVault().load(CONFIG))
+
+    def test_parallel_token_saves_leave_valid_package_and_no_temporary_files(self):
+        from concurrent.futures import ThreadPoolExecutor
+        with patch('cloud_portable.CredentialVault._backend', side_effect=CredentialUnavailable('sem cofre')):
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                list(executor.map(lambda n: PortableVault().save(CONFIG, f'fake-{n}'), range(12)))
+            self.assertIn(PortableVault().load(CONFIG), {f'fake-{n}' for n in range(12)})
+            self.assertEqual({path.name for path in self.directory.iterdir()}, {'access.enc', 'access.key'})
+
     def test_executable_without_external_folder_and_token_rotation(self):
         bundle = Path(self.temp.name) / 'bundle'
         embedded = bundle / '.firebase-bootstrap'

@@ -161,7 +161,80 @@ class AutomaticStartupTests(unittest.TestCase):
         app.cloud_worker = app.cloud_dialog = None
         app.db_path = 'unused.db'
         app.cloud_active = False
+        app.cloud_preferences = CloudPreferences()
+        app.root = Mock()
+        app.store = Mock()
+        app.cloud_menu = Mock()
+        app.cloud_automatic_var = Mock()
         return app
+
+    def test_enable_automatic_also_remembers_login_and_survives_restart(self):
+        app = self.app()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'prefs.json'
+            CloudPreferences(False, False).save(path)
+            with patch('app.cloud_preferences_path', return_value=path), patch('app.CloudConfig.load_active', return_value=CONFIG), patch('app.SyncWorker') as worker:
+                app.pause_cloud()
+                self.assertFalse(CloudPreferences.load(path).automatic)
+                app.resume_cloud()
+            self.assertTrue(CloudPreferences.load(path).automatic)
+            self.assertTrue(CloudPreferences.load(path).remember_login)
+            worker.return_value.start.assert_called_once()
+
+    def test_pause_then_enable_waits_for_old_worker_and_restarts_once(self):
+        app = self.app()
+        old = app.cloud_worker = Mock()
+        old.stopping = True
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'prefs.json'
+            with patch('app.cloud_preferences_path', return_value=path), patch('app.CloudConfig.load_active', return_value=CONFIG), patch('app.SyncWorker') as worker:
+                app.resume_cloud()
+                worker.assert_not_called()
+                app.root.after.assert_called_once_with(100, app.finish_cloud_resume)
+                old.thread.is_alive.return_value = False
+                app.finish_cloud_resume()
+                worker.assert_called_once()
+                worker.return_value.start.assert_called_once()
+
+    def test_pause_cancels_a_pending_resume(self):
+        app = self.app()
+        app.cloud_preferences.automatic = False
+        with patch('app.SyncWorker') as worker:
+            app.finish_cloud_resume()
+        worker.assert_not_called()
+
+    def test_duplicate_resume_callback_does_not_wait_for_a_healthy_worker(self):
+        app = self.app()
+        app.cloud_worker = Mock()
+        app.cloud_worker.stopping = False
+        with patch('app.SyncWorker') as worker:
+            app.finish_cloud_resume()
+        worker.assert_not_called()
+        app.root.after.assert_not_called()
+
+    def test_enable_running_worker_persists_access_without_parallel_worker(self):
+        app = self.app()
+        app.cloud_worker = Mock()
+        app.cloud_worker.stopping = False
+        with tempfile.TemporaryDirectory() as directory:
+            with patch('app.cloud_preferences_path', return_value=Path(directory)/'prefs.json'), patch('app.SyncWorker') as worker:
+                app.resume_cloud()
+            worker.assert_not_called()
+        app.cloud_worker.request_sync.assert_called_once_with(remember=True)
+        self.assertTrue(app.cloud_active)
+
+    def test_pending_data_wakes_worker_without_waiting_for_periodic_interval(self):
+        import queue
+        app = self.app()
+        app.cloud_active = True
+        app.cloud_worker = Mock()
+        app.cloud_worker.stopping = False
+        app.cloud_worker.events = queue.Queue()
+        app.store.outbox.count.return_value = 3
+        app.poll_cloud()
+        app.cloud_worker.request_sync.assert_called_once_with()
+        self.assertIn('3 documentos pendentes', app.cloud_status)
+        app.root.after.assert_called_once_with(500, app.poll_cloud)
 
     def test_startup_launches_saved_session_without_opening_dialog(self):
         app = self.app()
