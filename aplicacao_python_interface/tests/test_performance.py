@@ -71,6 +71,19 @@ class PerformanceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             remote_snapshot(documents)
 
+    def test_remote_names_keep_same_named_players_separate_and_old_labels_readable(self):
+        import copy
+        snapshot = copy.deepcopy(self.snapshot)
+        snapshot['players'][1]['label'] = snapshot['players'][0]['label']
+        self.assertEqual(len(report(snapshot)['players']), 2)
+        docs = {key: [{'fields': {k: firestore_value(v, k) for k, v in dict(row, schema_version=1).items()}}
+                      for row in rows] for key, rows in snapshot.items()}
+        remote = remote_snapshot(docs)
+        self.assertEqual(remote['players'][0]['label'], snapshot['players'][0]['label'])
+        # Documentos antigos sem migração continuam visíveis pelo rótulo anterior.
+        docs['players'][0]['fields']['label'] = {'stringValue': 'Jogador a1b2c3d4'}
+        self.assertEqual(remote_snapshot(docs)['players'][0]['label'], 'Jogador a1b2c3d4')
+
     def test_without_results_is_not_zero_percent(self):
         self.assertIsNone(metrics([dict(self.snapshot['moves'][0], result=None)])['accuracy'])
 

@@ -24,7 +24,7 @@ class OutboxTests(unittest.TestCase):
         self.store.close()
         self.folder.cleanup()
 
-    def test_snapshots_coalesce_and_exclude_names(self):
+    def test_snapshots_coalesce_and_include_player_name_only_in_profile(self):
         player = self.store.add_player('Nome privado')
         session = self.store.session(player)
         a = self.store.move(session, Event(2, 3))
@@ -36,7 +36,8 @@ class OutboxTests(unittest.TestCase):
         self.assertEqual(len(pending), 5)
         data = json.loads(next(r['payload'] for r in pending if r['entity'] == 'players'))
         self.assertEqual((data['presentations_count'], data['evaluated_count'], data['accuracy_percent']), (3, 2, 50.0))
-        self.assertNotIn('Nome privado', json.dumps(pending))
+        self.assertEqual(data['label'], 'Nome privado')
+        self.assertTrue(all('Nome privado' not in r['payload'] for r in pending if r['entity'] != 'players'))
         self.assertNotIn('name', data)
 
     def test_failed_send_is_retried_with_same_ids(self):
@@ -114,6 +115,35 @@ class OutboxTests(unittest.TestCase):
         self.store.close()
         self.store = PlayerStore(self.path)
         self.assertEqual(self.store.outbox.count(), 0)
+
+    def test_existing_profiles_requeue_names_once_without_losing_history_or_deletes(self):
+        player = self.store.add_player('Ana — paciente fictício')
+        session = self.store.session(player)
+        move = self.store.move(session, Event(0, 1))
+        self.store.result(move, True)
+        removed = self.store.add_player('Excluído')
+        self.store.outbox.acknowledge(self.store.outbox.pending())
+        self.store.delete_player(removed)
+        with self.store.db:
+            self.store.db.execute("DELETE FROM cloud_meta WHERE key='player_names_v1'")
+        installation = self.store.outbox.installation_id
+        self.store.close()
+        self.store = PlayerStore(self.path)
+        pending = self.store.outbox.pending()
+        self.assertEqual(len(pending), 2)
+        profile = next(r for r in pending if r['record_id'] == player)
+        self.assertEqual(json.loads(profile['payload'])['label'], 'Ana — paciente fictício')
+        self.assertEqual(next(r for r in pending if r['record_id'] == removed)['operation'], 'delete')
+        self.assertEqual(self.store.outbox.installation_id, installation)
+        self.assertEqual(self.store.history(player)[0]['id'], move)
+        self.assertEqual(self.store.history(player)[0]['session_id'], session)
+        self.store.outbox.acknowledge(pending)
+        self.store.close()
+        self.store = PlayerStore(self.path)
+        self.assertEqual(self.store.outbox.count(), 0)
+        self.store.rename_player(player, 'Ana atualizado')
+        self.assertEqual(json.loads(self.store.outbox.pending()[0]['payload'])['label'], 'Ana atualizado')
+        self.assertEqual(self.store.history(player)[0]['result'], 1)
 
     def test_destination_is_bound(self):
         self.store.outbox.bind('fabula-teste', 'operador123')

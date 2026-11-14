@@ -69,7 +69,7 @@ de resposta. As métricas descrevem o jogo e não fornecem diagnóstico clínico
 **Atualizar dados locais** lê o SQLite deste computador. **Consultar Firebase**
 consulta todas as instalações do mesmo operador, em segundo plano, mantendo o
 painel anterior se houver erro. A leitura remota não modifica o banco local e
-mostra códigos de jogadores, pois nomes não são enviados. A visão é atualizada
+mostra os nomes cadastrados, vinculados aos IDs de jogador e instalação. A visão é atualizada
 sob demanda e pode estar parcial enquanto outro computador ainda sincroniza.
 
 Antes da primeira consulta geral, publique **todo o arquivo
@@ -77,6 +77,22 @@ Antes da primeira consulta geral, publique **todo o arquivo
 Nuvem ou pelo pacote privado. As permissões permanecem limitadas ao mesmo UID;
 compartilhar dados com uma conta médica diferente exige uma etapa própria de
 controle de acesso. Teste gráfico independente: `python3 tools/check_performance.py`.
+
+**Nomes dos jogadores no Firebase:** o campo `players/{ID}.label` contém o nome
+ou apelido cadastrado, de 1 a 80 caracteres. Publique a versão atual de
+`firebase/firestore.rules`, atualize a aplicação em cada computador de origem e
+abra-a com sincronização habilitada. Os perfis existentes são reenfileirados uma
+única vez, mesmo sem novas jogadas; aguarde **Nuvem em dia**. Depois, no computador
+do profissional, clique em **Consultar Firebase**. O nome aparece nos jogadores,
+sessões, jogadas e CSV, sem precisar copiar o SQLite de origem.
+
+Renomear atualiza o perfil remoto e preserva IDs e estatísticas. Jogadores com
+nomes iguais continuam separados pelos IDs e instalações. Históricos antigos
+permanecem acessíveis pelo código até a sincronização da origem. Não é possível
+recuperar um nome somente do código se o banco de origem foi perdido antes do
+envio. Atualize todos os computadores que enviam dados; versões antigas ainda
+podem sobrescrever o nome com o rótulo codificado anterior. O nome passa a ser
+compartilhado com os computadores autorizados do mesmo operador.
 
 Aplicação desktop Tkinter para mostrar no monitor o personagem recebido da FPGA. Compatível com o protocolo da Semana3.
 
@@ -241,7 +257,7 @@ Para preparar o acesso sem redigitar credenciais:
 
 A sincronização começa automaticamente e os registros permanecem no SQLite quando a rede falha. O pacote não transporta o histórico de pacientes: cada instalação mantém seu banco e identificador próprios. Cotas e pausas do plano gratuito permanecem iguais. Tokens podem ser revogados; nesse caso, conecte novamente ou refaça a preparação. Referência: [sessões Firebase](https://firebase.google.com/docs/auth/admin/manage-sessions).
 
-Os nomes locais dos jogadores não são enviados; a nuvem recebe perfis codificados, sessões, jogadas e resumos, incluindo exclusões. O fluxo é local → nuvem e não baixa ou combina dados de outras instalações. A primeira autenticação também publica o histórico pendente existente.
+Os nomes ou apelidos cadastrados são enviados no perfil do jogador; a nuvem também recebe sessões, jogadas e resumos, incluindo exclusões. O envio é local → nuvem. O painel Acompanhamento consulta outras instalações do mesmo operador sem importar seus cadastros para o SQLite local. A primeira autenticação também publica o histórico pendente existente.
 
 O uso permanece **estritamente gratuito**: mantenha o projeto no Spark sem conta de faturamento vinculada. O programa não verifica o plano do projeto. O intervalo padrão é 60 segundos; HTTP 429/RESOURCE_EXHAUSTED pausa o envio com a fila preservada. Não há habilitação de cobrança ou migração de plano pela aplicação.
 

@@ -194,7 +194,7 @@ class PerformanceWindow:
                 self.refresh_options()
                 self.apply()
                 self.status.set('Firebase consultado em ' + datetime.now().astimezone().isoformat(timespec='seconds') +
-                                ' · somente dados já enviados · códigos remotos preservam os nomes locais · '
+                                ' · somente dados já enviados · nomes vinculados pelo ID do jogador e da instalação · '
                                 'a consulta de várias coleções pode refletir sincronização em andamento')
             else:
                 self.status.set('Consulta não concluída; dados anteriores mantidos. ' + value +

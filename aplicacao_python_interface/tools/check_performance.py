@@ -70,6 +70,9 @@ def main():
                 assert not window.loading
                 assert window.source == 'Firebase'
                 assert window.current['totals']['accuracy'] == 50
+                assert window.tables['Jogadores'].item(window.tables['Jogadores'].get_children()[0], 'values')[0] == '=Paciente fictício'
+                assert window.tables['Sessões'].item(window.tables['Sessões'].get_children()[0], 'values')[0] == '=Paciente fictício'
+                assert window.tables['Jogadas'].item(window.tables['Jogadas'].get_children()[0], 'values')[0] == '=Paciente fictício'
             previous = window.snapshot
             window.events.put(('error', 'Sem acesso HTTPS ao Firebase.'))
             deadline = time.monotonic() + 5

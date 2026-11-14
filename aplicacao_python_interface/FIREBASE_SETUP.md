@@ -79,7 +79,7 @@ Há duas identidades diferentes:
 
 O código usa Firebase ID tokens via REST para que as Security Rules controlem o acesso. Não é necessário baixar uma chave privada de service account nem embutir credenciais administrativas no executável. A API key identifica o projeto; a autorização depende da conta e das regras. Referências: [Firestore REST e autorização](https://firebase.google.com/docs/firestore/use-rest-api), [Auth REST](https://firebase.google.com/docs/reference/rest/auth) e [API keys](https://firebase.google.com/docs/projects/api-keys).
 
-Os nomes locais dos jogadores não são enviados. A nuvem recebe `player_id` e um rótulo como `Jogador a1b2c3d4`, além das estatísticas e das jogadas. Esse é um identificador codificado, não uma garantia de anonimato: os dados de desempenho continuam exigindo acesso restrito. A relação com o nome permanece no banco local; o prefixo do identificador é o usado no rótulo remoto. Renomear o jogador preserva esse identificador remoto.
+O perfil remoto contém `player_id` e o nome ou apelido cadastrado no campo `label`, além das estatísticas. Sessões e jogadas referenciam o ID do jogador; o painel resolve o nome usando jogador e instalação, inclusive quando há nomes iguais. Renomear atualiza `label` sem alterar IDs ou o histórico. Nomes e desempenhos ficam acessíveis aos computadores autorizados do mesmo operador; o pacote de acesso deve continuar privado.
 
 ## 4. Criar o projeto Firebase
 
@@ -183,9 +183,18 @@ a dados pertencentes a outros operadores; contas médicas distintas não recebem
 compartilhamento automaticamente nesta versão. O pacote distribuído representa
 a autorização do operador configurado e deve continuar privado.
 
-Os nomes dos pacientes permanecem no SQLite de origem. A consulta remota mostra
-códigos de jogador e instalação. Mantenha a correspondência de códigos sob
-controle do responsável; esta versão não inclui um cadastro clínico nominal.
+Os nomes cadastrados no SQLite são sincronizados no campo `label` do perfil.
+Assim, o computador do profissional obtém nome, sessões e estatísticas somente
+pelo Firebase. As regras aceitam rótulos de 1 a 80 caracteres, incluindo os
+códigos de versões anteriores. Nomes iguais não mesclam jogadores.
+
+Após publicar as regras, abra a aplicação atualizada em cada computador de
+origem e aguarde a sincronização. A migração `player_names_v1` reenfileira os
+perfis existentes uma única vez, sem modificar sessões, jogadas ou exclusões
+pendentes. Depois atualize a consulta no computador do profissional. Se só houver
+o código remoto e o banco original tiver sido perdido, não há como deduzir o
+nome anterior. Atualize os demais computadores para que versões antigas não
+sobrescrevam nomes com códigos.
 
 Instalações de versões anteriores ainda não têm esse registro intermediário.
 Abra a versão atualizada em cada computador com sincronização habilitada, mesmo
@@ -215,7 +224,7 @@ O ID da instalação é gerado uma vez e fica persistido no mesmo SQLite. Isso e
 
 | Coleção | Conteúdo |
 | --- | --- |
-| players | ID/rótulo codificado e totais do jogador: apresentações, avaliações, acertos, erros e percentual. |
+| players | ID, nome/apelido no campo label e totais do jogador: apresentações, avaliações, acertos, erros e percentual. |
 | sessions | ID do jogador, início da sessão, totais e resumo por cada uma das quatro histórias. |
 | moves | Jogada individual: jogador, sessão, história, personagem, horário, resultado 0/1 ou null e horário do resultado. |
 
@@ -253,7 +262,7 @@ python3 tools/check_layout.py
 python3 tools/check_cloud_integration.py --run-live
 ```
 
-Esse comando só deve ser executado após a configuração. Solicita email e senha no terminal, usa um SQLite temporário e uma instalação nova, envia um conjunto fictício com dois resultados (um acerto e um erro) e uma apresentação sem resultado, consulta os documentos e verifica taxa de 50%. Também testa ausência de nomes, acesso sem autenticação, acesso em outro UID e exclusão dos dados de teste. Não carrega seu banco real. Sem `--run-live`, o comando não faz requisições.
+Esse comando só deve ser executado após a configuração. Solicita email e senha no terminal, ou usa o acesso salvo com `--saved-access`, e cria dados fictícios em duas instalações temporárias. Testa nome e renomeação no painel remoto, sessões, taxa de 50%, apresentações sem resultado, separação de IDs repetidos entre instalações, bloqueio sem autenticação e de outro UID e exclusão dos dados de teste. Não carrega seu banco local real. Sem `--run-live`, não faz requisições.
 
 A limpeza ocorre no final; se a rede falhar durante a limpeza, o roteiro informa o caminho exato da instalação temporária para conferência no Console. O projeto pode consumir uma pequena quantidade de operações reais durante esse ensaio.
 
@@ -279,7 +288,7 @@ Depois desse ensaio controlado, validar na interface:
 | HTTP 429 / RESOURCE_EXHAUSTED | Sincronização pausada, fila preservada. Consultar Usage e reconectar após restabelecer a cota; não habilitar faturamento. |
 | Fila não zera | Consultar Detalhes; corrigir erro permanente e reconectar. Pausa preserva os dados. |
 | Outro projeto/operador bloqueado | Retomada automática encontrou destino diferente do vínculo local. Configure e autentique explicitamente o novo destino pelo menu. |
-| Não aparece o nome do jogador | Comportamento esperado: o envio utiliza player_id e rótulo codificado. |
+| Aparece código em vez do nome | Publique as regras atuais, atualize a aplicação na origem, aguarde a sincronização dos perfis e consulte novamente. O nome não pode ser deduzido de um código antigo sem a origem. |
 
 ## 15. Arquivos alterados ou incluídos
 

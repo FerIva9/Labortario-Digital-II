@@ -24,6 +24,12 @@ class CloudOutbox:
                 for move in db.execute('SELECT id FROM moves').fetchall():
                     self.move(move['id'])
                 db.execute("INSERT INTO cloud_meta VALUES ('seeded','1')")
+            # Reenvia os perfis já sincronizados uma única vez com seus nomes.
+            # IDs, sessões, jogadas e exclusões pendentes são preservados.
+            if not db.execute("SELECT 1 FROM cloud_meta WHERE key='player_names_v1'").fetchone():
+                for player in db.execute('SELECT id FROM players').fetchall():
+                    self.player(player['id'])
+                db.execute("INSERT INTO cloud_meta VALUES ('player_names_v1','1')")
 
     @property
     def installation_id(self):
@@ -61,10 +67,11 @@ class CloudOutbox:
                 'error_count': total - correct, 'accuracy_percent': 100 * correct / total if total else None}
 
     def player(self, player):
+        profile = self.db.execute('SELECT name FROM players WHERE id=?', (player,)).fetchone()
         rows = self.db.execute('''SELECT m.result FROM moves m JOIN sessions s ON s.id=m.session
             WHERE s.player=?''', (player,)).fetchall()
         self.put('players', player, {'schema_version': 1, 'player_id': player,
-                                    'label': f'Jogador {player[:8]}', **self.stats(rows)})
+                                    'label': profile['name'], **self.stats(rows)})
 
     def session(self, session):
         row = self.db.execute('SELECT * FROM sessions WHERE id=?', (session,)).fetchone()
