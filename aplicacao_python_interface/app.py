@@ -936,6 +936,9 @@ class App:
 
 
 if __name__ == '__main__':
+    if len(sys.argv) == 3 and sys.argv[1] == '--check-installation':
+        from installation_check import main as check_installation
+        raise SystemExit(check_installation(sys.argv[2]))
     configure_display()
     root = tk.Tk()
     try:

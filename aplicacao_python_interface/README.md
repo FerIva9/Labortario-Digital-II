@@ -1,5 +1,47 @@
 # Fábula TEA + — interface Python
 
+Veja [ARQUITETURA.md](ARQUITETURA.md) para o caminho dos dados, a distribuição
+do executável com Firebase e a diferença de protocolo da Semana4: essa versão
+da FPGA envia apresentações, mas ainda não transmite os resultados R0/R1.
+
+### Ubuntu
+
+Em uma sessão gráfica do Ubuntu, instale `python3-tk` e `python3-venv`:
+
+```bash
+sudo apt update
+sudo apt install python3-tk python3-venv
+cd aplicacao_python_interface
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
+python3 app.py
+```
+
+Para o Firebase automático, transfira `firebase_defaults.json` e
+`.firebase-private/` por meio privado. Um clone sem esses arquivos abre a
+interface em modo local; também é possível configurar o acesso pelo menu Nuvem.
+Sem cofre seguro no Ubuntu, a autorização preparada usa o pacote privado
+criptografado. A porta serial exige permissão do usuário (normalmente o grupo
+`dialout`, após sair e entrar na sessão). O workflow `Interface Ubuntu` testa
+a lógica e a interface em tela virtual sem credenciais Firebase.
+
+### Diagnóstico do executável
+
+No PowerShell, `Start-Process` permite aguardar o aplicativo sem console:
+
+```powershell
+$check = Start-Process -FilePath .\dist\FabulaTEA.exe -ArgumentList '--check-installation', 'diagnostico.txt' -Wait -PassThru
+Get-Content -Encoding UTF8 diagnostico.txt
+$check.ExitCode
+```
+
+Esse comando testa Tkinter e imagens e realiza um ensaio Firebase real usando
+apenas dados fictícios de uma instalação temporária, removidos ao final.
+Código de saída zero indica sucesso. Não acessa o histórico local de jogadores.
+O executável com autorização incorporada fica fora do Git, assim como os arquivos
+privados originais. Distribua-o por um canal privado.
+
 Aplicação desktop Tkinter para mostrar no monitor o personagem recebido da FPGA. Compatível com o protocolo da Semana3.
 
 ## Execução

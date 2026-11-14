@@ -42,5 +42,7 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except (FirebaseError, CredentialUnavailable, ValueError, OSError):
-        raise SystemExit('Preparação interrompida: confira conexão, configuração e autorização da conta. Nenhuma credencial foi exibida.')
+    except (FirebaseError, CredentialUnavailable) as error:
+        raise SystemExit(f'Preparação interrompida: {error}') from None
+    except (ValueError, OSError):
+        raise SystemExit('Preparação interrompida: confira os arquivos de configuração e acesso privado. Nenhuma credencial foi exibida.') from None

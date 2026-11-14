@@ -1,0 +1,33 @@
+name: Interface Ubuntu
+
+on:
+  push:
+    paths:
+      - 'aplicacao_python_interface/**'
+      - '.github/workflows/interface-ubuntu.yml'
+  pull_request:
+    paths:
+      - 'aplicacao_python_interface/**'
+      - '.github/workflows/interface-ubuntu.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  interface:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: aplicacao_python_interface
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependências do Ubuntu
+        run: sudo apt-get update && sudo apt-get install -y python3-tk python3-venv xvfb xauth
+      - name: Dependências Python
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt
+      - name: Testes locais
+        run: .venv/bin/python -m unittest discover -s tests -v
+      - name: Interface gráfica em tela virtual
+        run: xvfb-run -a .venv/bin/python tools/check_layout.py

@@ -37,7 +37,8 @@ def main():
         venv.EnvBuilder(with_pip=True).create(environment)
     run([python, '-m', 'pip', 'install', '-r', BASE / 'requirements-build.txt'])
     run([python, '-m', 'unittest', 'discover', '-s', 'tests', '-v'])
-    run([python, '-c', 'import tkinter; import serial.tools.list_ports; from PIL import ImageTk'])
+    # Importar tkinter não detecta a ausência dos scripts Tcl usados pelo pacote.
+    run([python, '-c', 'import tkinter; tkinter.Tcl(); import serial.tools.list_ports; from PIL import ImageTk'])
     run([python, '-c', 'from cloud_firebase import CloudConfig; CloudConfig.load("firebase_defaults.json")'])
     run([python, '-c', 'from tools.build_windows import validate_private_access; validate_private_access()'])
     datas = ['--add-data', f'{BASE / "historias.json"}:.',

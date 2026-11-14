@@ -11,6 +11,8 @@ from cloud_firebase import CloudConfig, FirebaseError, FirestoreClient, request_
 from player_store import PlayerStore
 from protocol import Event
 from runtime_paths import cloud_config_path
+from cloud_portable import PortableVault
+from cloud_credentials import CredentialUnavailable
 
 
 def drain(store, client):
@@ -27,19 +29,29 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run-live', action='store_true', help='autoriza criar e remover apenas dados fictícios da instalação temporária deste ensaio')
     parser.add_argument('--config', type=Path, default=cloud_config_path())
+    parser.add_argument('--saved-access', action='store_true',
+                        help='usa a autorização já preparada, sem solicitar email ou senha')
     args = parser.parse_args()
     if not args.run_live:
         print('Nenhuma requisição realizada. Após configurar o Firebase, execute com --run-live.')
         return 0
     config = CloudConfig.load_active(local_path=args.config)
     print(f'Projeto: {config.project_id} | UID configurado: {config.operator_uid}')
-    email = input('Email do responsável: ').strip()
-    password = getpass('Senha (não será gravada nem exibida): ')
     client = FirestoreClient(config)
-    try:
-        client.sign_in(email, password)
-    finally:
-        password = None
+    if args.saved_access:
+        vault = PortableVault()
+        token = vault.load(config)
+        if not token:
+            raise ValueError('Acesso salvo ausente. Execute tools/prepare_private_access.py.')
+        client.restore(token)
+        vault.save(config, client._refresh_token)
+    else:
+        email = input('Email do responsável: ').strip()
+        password = getpass('Senha (não será gravada nem exibida): ')
+        try:
+            client.sign_in(email, password)
+        finally:
+            password = None
     with tempfile.TemporaryDirectory() as folder:
         store = PlayerStore(Path(folder) / 'ensaio.sqlite3')
         player = None
@@ -117,6 +129,6 @@ def main():
 if __name__ == '__main__':
     try:
         raise SystemExit(main())
-    except (FirebaseError, ValueError, OSError, RuntimeError) as error:
+    except (FirebaseError, CredentialUnavailable, ValueError, OSError, RuntimeError) as error:
         print(f'Ensaio não concluído: {error}', file=sys.stderr)
         raise SystemExit(1)
