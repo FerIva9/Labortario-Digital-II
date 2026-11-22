@@ -4,34 +4,34 @@
     "cor": "#dff2f0",
     "personagens": [
       {
-        "nome": "Navio pirata",
+        "nome": "Tempestade",
         "simbolo": "0",
-        "imagem": "assets/h0_p0.png"
-      },
-      {
-        "nome": "Mapa do tesouro",
-        "simbolo": "1",
-        "imagem": "assets/h0_p1.png"
-      },
-      {
-        "nome": "Ilha",
-        "simbolo": "2",
-        "imagem": "assets/h0_p2.png"
-      },
-      {
-        "nome": "Tesouro",
-        "simbolo": "3",
-        "imagem": "assets/h0_p3.png"
+        "imagem": "assets/h0_p5.png"
       },
       {
         "nome": "Pirata",
-        "simbolo": "4",
+        "simbolo": "1",
         "imagem": "assets/h0_p4.png"
       },
       {
-        "nome": "Tempestade",
+        "nome": "Tesouro",
+        "simbolo": "2",
+        "imagem": "assets/h0_p3.png"
+      },
+      {
+        "nome": "Ilha",
+        "simbolo": "3",
+        "imagem": "assets/h0_p2.png"
+      },
+      {
+        "nome": "Mapa",
+        "simbolo": "4",
+        "imagem": "assets/h0_p1.png"
+      },
+      {
+        "nome": "Navio",
         "simbolo": "5",
-        "imagem": "assets/h0_p5.png"
+        "imagem": "assets/h0_p0.png"
       }
     ]
   },
@@ -40,34 +40,34 @@
     "cor": "#f6ead7",
     "personagens": [
       {
-        "nome": "Cavaleiro",
-        "simbolo": "0",
-        "imagem": "assets/h1_p0.png"
-      },
-      {
-        "nome": "Dragão",
-        "simbolo": "1",
-        "imagem": "assets/h1_p1.png"
-      },
-      {
         "nome": "Castelo",
-        "simbolo": "2",
+        "simbolo": "0",
         "imagem": "assets/h1_p2.png"
       },
       {
-        "nome": "Floresta",
-        "simbolo": "3",
-        "imagem": "assets/h1_p3.png"
+        "nome": "Princesa",
+        "simbolo": "1",
+        "imagem": "assets/h1_p5.png"
+      },
+      {
+        "nome": "Dragão",
+        "simbolo": "2",
+        "imagem": "assets/h1_p1.png"
       },
       {
         "nome": "Tesouro",
-        "simbolo": "4",
+        "simbolo": "3",
         "imagem": "assets/h1_p4.png"
       },
       {
-        "nome": "Princesa",
+        "nome": "Príncipe",
+        "simbolo": "4",
+        "imagem": "assets/h1_p0.png"
+      },
+      {
+        "nome": "Floresta",
         "simbolo": "5",
-        "imagem": "assets/h1_p5.png"
+        "imagem": "assets/h1_p3.png"
       }
     ]
   },
@@ -76,24 +76,24 @@
     "cor": "#eae5fa",
     "personagens": [
       {
-        "nome": "Foguete",
-        "simbolo": "0",
-        "imagem": "assets/h2_p0.png"
-      },
-      {
-        "nome": "Astronauta",
-        "simbolo": "1",
-        "imagem": "assets/h2_p1.png"
-      },
-      {
         "nome": "Planeta",
-        "simbolo": "2",
+        "simbolo": "0",
         "imagem": "assets/h2_p2.png"
       },
       {
-        "nome": "Alienígena",
+        "nome": "Arma",
+        "simbolo": "1",
+        "imagem": "assets/h2_p5.png"
+      },
+      {
+        "nome": "Astronauta",
+        "simbolo": "2",
+        "imagem": "assets/h2_p1.png"
+      },
+      {
+        "nome": "Foguete",
         "simbolo": "3",
-        "imagem": "assets/h2_p3.png"
+        "imagem": "assets/h2_p0.png"
       },
       {
         "nome": "Base espacial",
@@ -101,9 +101,9 @@
         "imagem": "assets/h2_p4.png"
       },
       {
-        "nome": "Pistola espacial",
+        "nome": "Alienígena",
         "simbolo": "5",
-        "imagem": "assets/h2_p5.png"
+        "imagem": "assets/h2_p3.png"
       }
     ]
   },
@@ -112,34 +112,34 @@
     "cor": "#e3effa",
     "personagens": [
       {
-        "nome": "Acordar",
+        "nome": "Ônibus",
         "simbolo": "0",
-        "imagem": "assets/h3_p0.png"
+        "imagem": "assets/h3_p5.png"
       },
       {
-        "nome": "Tomar café",
+        "nome": "Café-da-manhã",
         "simbolo": "1",
         "imagem": "assets/h3_p1.png"
       },
       {
-        "nome": "Tomar banho",
+        "nome": "Roupas",
         "simbolo": "2",
-        "imagem": "assets/h3_p2.png"
+        "imagem": "assets/h3_p4.png"
       },
       {
-        "nome": "Escovar os dentes",
+        "nome": "Escovar dentes",
         "simbolo": "3",
         "imagem": "assets/h3_p3.png"
       },
       {
-        "nome": "Vestir-se",
+        "nome": "Banho",
         "simbolo": "4",
-        "imagem": "assets/h3_p4.png"
+        "imagem": "assets/h3_p2.png"
       },
       {
-        "nome": "Ir à escola",
+        "nome": "Arrumar a cama",
         "simbolo": "5",
-        "imagem": "assets/h3_p5.png"
+        "imagem": "assets/h3_p0.png"
       }
     ]
   }
